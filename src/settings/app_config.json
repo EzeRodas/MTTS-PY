@@ -1,0 +1,8 @@
+{
+  "volume": 1,
+  "playbackDevice": null,
+  "monitoring": false,
+  "monitoringDevice": "45",
+  "monitoringVolume": 1,
+  "modelsPath": "/home/fible/.local/share/mtts-models"
+}

@@ -1,0 +1,22 @@
+{
+  "name": "mtts-js",
+  "version": "1.0.0",
+  "description": "Local, cross-platform Text-to-Speech (TTS) desktop application",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "npm run build && npm start"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "audic": "^3.0.2",
+    "kokoro-js": "^1.2.1",
+    "onnxruntime-node": "^1.24.3",
+    "wavefile": "^11.0.0"
+  }
+}
