@@ -5,15 +5,23 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build:ui",
+    "build:ui": "esbuild src/ui/preload.ts --bundle --platform=node --external:electron --target=node16 --outfile=dist/ui/preload.cjs && esbuild src/ui/renderer.ts --bundle --format=esm --outfile=dist/ui/renderer.bundle.js",
     "start": "node dist/index.js",
-    "dev": "npm run build && npm start"
+    "dev": "npm run build && npm start",
+    "electron:start": "npm run build && electron dist/ui/main.js --ozone-platform=x11"
   },
   "devDependencies": {
     "@types/node": "^22.19.17",
+    "autoprefixer": "^10.5.0",
+    "electron": "^41.2.0",
+    "esbuild": "^0.28.0",
+    "postcss": "^8.5.9",
+    "tailwindcss": "^4.2.2",
     "typescript": "^5.4.0"
   },
   "dependencies": {
+    "@tailwindcss/cli": "^4.2.2",
     "audic": "^3.0.2",
     "kokoro-js": "^1.2.1",
     "onnxruntime-node": "^1.24.3",
