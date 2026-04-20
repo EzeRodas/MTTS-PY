@@ -95,6 +95,7 @@ export class HotkeyManager {
         console.log(`Playing hotkey [${entry.hotkey}]: "${entry.text}"`);
         await this.audioService.play(
             filePath,
+            appConfig.playback,
             appConfig.playbackDevice,
             appConfig.volume,
             appConfig.monitoring,

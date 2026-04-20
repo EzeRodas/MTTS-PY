@@ -109,15 +109,19 @@ export class AudioService {
         throw new Error(`Unsupported platform: ${platform}`);
     }
 
-    public async play(filePath: string, deviceId: string | null, volume: number, monitoring: boolean = false, monitoringDeviceId: string | null = null, monitoringVolume: number = 1.0): Promise<void> {
-        const mainCommand = this.getPlayCommand(filePath, deviceId, volume);
-        console.log(`Playing audio (Main): ${mainCommand}`);
-        
-        const tasks: Promise<any>[] = [
-            execPromise(mainCommand).catch(err => {
-                console.error(`Failed to play audio on device ${deviceId}:`, err.message);
-            })
-        ];
+    public async play(filePath: string, playback: boolean, deviceId: string | null, volume: number, monitoring: boolean = false, monitoringDeviceId: string | null = null, monitoringVolume: number = 1.0): Promise<void> {
+        const tasks: Promise<any>[] = [];
+
+        if (playback) {
+            const mainCommand = this.getPlayCommand(filePath, deviceId, volume);
+            console.log(`Playing audio (Main): ${mainCommand}`);
+            
+            tasks.push(
+                execPromise(mainCommand).catch(err => {
+                    console.error(`Failed to play audio on device ${deviceId}:`, err.message);
+                })
+            );
+        }
 
         if (monitoring && monitoringDeviceId) {
             const monCommand = this.getPlayCommand(filePath, monitoringDeviceId, monitoringVolume);

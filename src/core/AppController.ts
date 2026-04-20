@@ -157,6 +157,18 @@ Available commands:
         await this.ttsService.setVoice(voiceName);
     }
 
+    public async getAppConfig() {
+        return await this.settingsManager.getAppConfig();
+    }
+
+    public async updateAppConfig(config: any) {
+        return await this.settingsManager.updateAppConfig(config);
+    }
+
+    public async getDevices() {
+        return await this.audioService.getDevices();
+    }
+
     private async handleVoiceCommand(args: string[]): Promise<void> {
         if (args.length === 0) {
             console.log('Usage: /voice --list OR /voice <voice_name>');

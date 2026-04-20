@@ -9,5 +9,8 @@ contextBridge.exposeInMainWorld("api", {
   setModel: (model) => ipcRenderer.invoke("set-model", model),
   getVoices: () => ipcRenderer.invoke("get-voices"),
   getActiveVoice: () => ipcRenderer.invoke("get-active-voice"),
-  setVoice: (voice) => ipcRenderer.invoke("set-voice", voice)
+  setVoice: (voice) => ipcRenderer.invoke("set-voice", voice),
+  getAppConfig: () => ipcRenderer.invoke("get-app-config"),
+  updateAppConfig: (config) => ipcRenderer.invoke("update-app-config", config),
+  getDevices: () => ipcRenderer.invoke("get-devices")
 });

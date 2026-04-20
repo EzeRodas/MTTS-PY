@@ -121,6 +121,39 @@ async function createWindow() {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
 
+async function createSettingsWindow() {
+    settingsWindow = new BrowserWindow({
+        width: 400,
+        height: 500,
+        frame: false,
+        transparent: true,
+        resizable: false,
+        maximizable: false,
+        autoHideMenuBar: true,
+        show: false, // Hidden by default
+        webPreferences: {
+            preload: path.join(__dirname, '../preload/preload.mjs'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: false
+        }
+    });
+
+    settingsWindow.setMenu(null);
+    if (process.env['ELECTRON_RENDERER_URL']) {
+        await settingsWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/settings.html`);
+    } else {
+        await settingsWindow.loadFile(path.join(__dirname, '../renderer/settings.html'));
+    }
+
+    settingsWindow.on('close', (event) => {
+        event.preventDefault(); // Don't destroy window
+        if (settingsWindow) {
+            settingsWindow.hide();
+        }
+    });
+}
+
 app.whenReady().then(async () => {
     await bootstrapBackend();
     
@@ -159,67 +192,56 @@ app.whenReady().then(async () => {
         }
     });
 
+    ipcMain.handle('get-app-config', async () => {
+        return appController ? await appController.getAppConfig() : null;
+    });
+
+    ipcMain.handle('update-app-config', async (event, config: any) => {
+        if (appController) {
+            await appController.updateAppConfig(config);
+        }
+    });
+
+    ipcMain.handle('get-devices', async () => {
+        return appController ? await appController.getDevices() : [];
+    });
+
     ipcMain.on('close-app', () => {
         app.quit();
     });
 
     ipcMain.on('open-settings', (event, buttonBounds: { x: number, y: number, width: number, height: number }) => {
-        if (settingsWindow) {
-            settingsWindow.focus();
+        if (!settingsWindow || !mainWindow) return;
+
+        if (settingsWindow.isVisible()) {
+            settingsWindow.hide();
             return;
         }
 
-        if (!mainWindow) return;
-
         const mainBounds = mainWindow.getBounds();
-        const settingsWidth = 400;
         const settingsHeight = 500;
         
         // Aligned with left margin, extending upwards and to the right
         const x = mainBounds.x + Math.floor(buttonBounds.x);
-        const y = mainBounds.y + Math.floor(buttonBounds.y) - settingsHeight;
+        const y = mainBounds.y + Math.floor(buttonBounds.y) - settingsHeight - 16;
 
-        settingsWindow = new BrowserWindow({
-            width: settingsWidth,
-            height: settingsHeight,
-            x: x,
-            y: y - 16,
-            frame: false,
-            transparent: true,
-            resizable: false,
-            maximizable: false,
-            autoHideMenuBar: true,
-            webPreferences: {
-                preload: path.join(__dirname, '../preload/preload.mjs'),
-                contextIsolation: true,
-                nodeIntegration: false,
-                sandbox: false
-            }
-            });
-
-            settingsWindow.setMenu(null);
-            if (process.env['ELECTRON_RENDERER_URL']) {
-            settingsWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/settings.html`);
-            } else {
-            settingsWindow.loadFile(path.join(__dirname, '../renderer/settings.html'));
-            }
-
-            settingsWindow.on('closed', () => {
-            settingsWindow = null;
-        });
+        settingsWindow.setPosition(x, y);
+        settingsWindow.show();
     });
 
     ipcMain.on('close-settings', () => {
         if (settingsWindow) {
-            settingsWindow.close();
+            settingsWindow.hide();
         }
     });
 
     await createWindow();
+    await createSettingsWindow();
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             createWindow();
+            createSettingsWindow();
         }
     });
 });

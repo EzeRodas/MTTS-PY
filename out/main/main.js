@@ -30,6 +30,7 @@ class SettingsManager {
     }
   }
   defaultAppConfig = {
+    playback: true,
     volume: 1,
     playbackDevice: null,
     monitoring: false,
@@ -164,7 +165,7 @@ class KokoroTTSProvider {
     } catch (e) {
     }
     const finalFilePath = path.join(process.cwd(), "src", "audio", "tts_output_0.wav");
-    await this.audioService.play(finalFilePath, appConfig.playbackDevice, appConfig.volume, appConfig.monitoring, appConfig.monitoringDevice, appConfig.monitoringVolume);
+    await this.audioService.play(finalFilePath, appConfig.playback, appConfig.playbackDevice, appConfig.volume, appConfig.monitoring, appConfig.monitoringDevice, appConfig.monitoringVolume);
   }
 }
 class AppController {
@@ -308,6 +309,15 @@ ${this.listModels().join(", ")}`);
   }
   async setVoice(voiceName) {
     await this.ttsService.setVoice(voiceName);
+  }
+  async getAppConfig() {
+    return await this.settingsManager.getAppConfig();
+  }
+  async updateAppConfig(config) {
+    return await this.settingsManager.updateAppConfig(config);
+  }
+  async getDevices() {
+    return await this.audioService.getDevices();
   }
   async handleVoiceCommand(args) {
     if (args.length === 0) {
@@ -585,14 +595,17 @@ class AudioService {
     }
     throw new Error(`Unsupported platform: ${platform}`);
   }
-  async play(filePath, deviceId, volume, monitoring = false, monitoringDeviceId = null, monitoringVolume = 1) {
-    const mainCommand = this.getPlayCommand(filePath, deviceId, volume);
-    console.log(`Playing audio (Main): ${mainCommand}`);
-    const tasks = [
-      execPromise(mainCommand).catch((err) => {
-        console.error(`Failed to play audio on device ${deviceId}:`, err.message);
-      })
-    ];
+  async play(filePath, playback, deviceId, volume, monitoring = false, monitoringDeviceId = null, monitoringVolume = 1) {
+    const tasks = [];
+    if (playback) {
+      const mainCommand = this.getPlayCommand(filePath, deviceId, volume);
+      console.log(`Playing audio (Main): ${mainCommand}`);
+      tasks.push(
+        execPromise(mainCommand).catch((err) => {
+          console.error(`Failed to play audio on device ${deviceId}:`, err.message);
+        })
+      );
+    }
     if (monitoring && monitoringDeviceId) {
       const monCommand = this.getPlayCommand(filePath, monitoringDeviceId, monitoringVolume);
       console.log(`Playing audio (Monitor): ${monCommand}`);
@@ -679,6 +692,7 @@ class HotkeyManager {
     console.log(`Playing hotkey [${entry.hotkey}]: "${entry.text}"`);
     await this.audioService.play(
       filePath,
+      appConfig.playback,
       appConfig.playbackDevice,
       appConfig.volume,
       appConfig.monitoring,
@@ -814,6 +828,7 @@ class HistoryManager {
       console.log(`Playing history [${id}]...`);
       await this.audioService.play(
         filePath,
+        appConfig.playback,
         appConfig.playbackDevice,
         appConfig.volume,
         appConfig.monitoring,
@@ -970,6 +985,37 @@ async function createWindow() {
   });
   mainWindow.webContents.openDevTools({ mode: "detach" });
 }
+async function createSettingsWindow() {
+  settingsWindow = new BrowserWindow({
+    width: 400,
+    height: 500,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    maximizable: false,
+    autoHideMenuBar: true,
+    show: false,
+    // Hidden by default
+    webPreferences: {
+      preload: path.join(__dirname$1, "../preload/preload.mjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  settingsWindow.setMenu(null);
+  if (process.env["ELECTRON_RENDERER_URL"]) {
+    await settingsWindow.loadURL(`${process.env["ELECTRON_RENDERER_URL"]}/settings.html`);
+  } else {
+    await settingsWindow.loadFile(path.join(__dirname$1, "../renderer/settings.html"));
+  }
+  settingsWindow.on("close", (event) => {
+    event.preventDefault();
+    if (settingsWindow) {
+      settingsWindow.hide();
+    }
+  });
+}
 app.whenReady().then(async () => {
   await bootstrapBackend();
   ipcMain.handle("submit-text", async (event, text) => {
@@ -999,56 +1045,44 @@ app.whenReady().then(async () => {
       await appController.setVoice(voice);
     }
   });
+  ipcMain.handle("get-app-config", async () => {
+    return appController ? await appController.getAppConfig() : null;
+  });
+  ipcMain.handle("update-app-config", async (event, config) => {
+    if (appController) {
+      await appController.updateAppConfig(config);
+    }
+  });
+  ipcMain.handle("get-devices", async () => {
+    return appController ? await appController.getDevices() : [];
+  });
   ipcMain.on("close-app", () => {
     app.quit();
   });
   ipcMain.on("open-settings", (event, buttonBounds) => {
-    if (settingsWindow) {
-      settingsWindow.focus();
+    if (!settingsWindow || !mainWindow) return;
+    if (settingsWindow.isVisible()) {
+      settingsWindow.hide();
       return;
     }
-    if (!mainWindow) return;
     const mainBounds = mainWindow.getBounds();
-    const settingsWidth = 400;
     const settingsHeight = 500;
     const x = mainBounds.x + Math.floor(buttonBounds.x);
-    const y = mainBounds.y + Math.floor(buttonBounds.y) - settingsHeight;
-    settingsWindow = new BrowserWindow({
-      width: settingsWidth,
-      height: settingsHeight,
-      x,
-      y: y - 16,
-      frame: false,
-      transparent: true,
-      resizable: false,
-      maximizable: false,
-      autoHideMenuBar: true,
-      webPreferences: {
-        preload: path.join(__dirname$1, "../preload/preload.mjs"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false
-      }
-    });
-    settingsWindow.setMenu(null);
-    if (process.env["ELECTRON_RENDERER_URL"]) {
-      settingsWindow.loadURL(`${process.env["ELECTRON_RENDERER_URL"]}/settings.html`);
-    } else {
-      settingsWindow.loadFile(path.join(__dirname$1, "../renderer/settings.html"));
-    }
-    settingsWindow.on("closed", () => {
-      settingsWindow = null;
-    });
+    const y = mainBounds.y + Math.floor(buttonBounds.y) - settingsHeight - 16;
+    settingsWindow.setPosition(x, y);
+    settingsWindow.show();
   });
   ipcMain.on("close-settings", () => {
     if (settingsWindow) {
-      settingsWindow.close();
+      settingsWindow.hide();
     }
   });
   await createWindow();
+  await createSettingsWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+      createSettingsWindow();
     }
   });
 });

@@ -26,6 +26,7 @@ export class SettingsManager implements ISettingsManager {
     }
 
     private defaultAppConfig: AppConfig = {
+        playback: true,
         volume: 1.0,
         playbackDevice: null,
         monitoring: false,

@@ -78,6 +78,7 @@ export class HistoryManager {
             console.log(`Playing history [${id}]...`);
             await this.audioService.play(
                 filePath, 
+                appConfig.playback,
                 appConfig.playbackDevice, 
                 appConfig.volume, 
                 appConfig.monitoring, 

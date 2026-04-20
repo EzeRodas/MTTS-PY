@@ -19,36 +19,36 @@
     }
 </style>
 </head>
-<body class="box-border select-none m-0 border-none outline-none font-bold font-[Nunito] text-gray-700">
+<body class="box-border select-none m-0 border-none outline-none font-[Nunito] text-gray-700">
     <div class="rounded-3xl w-screen h-screen bg-white/90">
-        <div class="w-full p-4 flex justify-between">
+        <div class="w-full p-3.5 flex justify-between bg-white shadow rounded-t-3xl">
             <h2 class="text-2xl font-bold">
-                Settings
+                Quick settings
             </h2>
-            <button id="closeSettingsBtn">X</button>
+            <button id="closeSettingsBtn" class="mr-2">X</button>
         </div>
         <!-- Model and Voice selector -->
-        <div class="mx-4 mt-2 p-4 bg-white rounded-3xl"> 
+        <div class="mx-4 mt-5 p-4 bg-white rounded-3xl shadow"> 
             <!-- Model -->
             <div class="flex justify-between mb-3">
-                <h4>Model:</h4>
-                <select name="modelSelector" id="modelSelector" class="bg-white rounded-lg w-48 outline-gray-200 outline-1"></select>
+                <h4 class="font-bold">Model</h4>
+                <select name="modelSelector" id="modelSelector" class="bg-white rounded-lg w-48 outline-gray-300 outline-1"></select>
             </div>
             <!-- Voice -->
             <div class="flex justify-between">
-                <h4>Voice:</h4>
-                <select name="voiceSelector" id="voiceSelector" class="bg-white rounded-lg w-48 outline-gray-200 outline-1"></select>
+                <h4 class="font-bold">Voice</h4>
+                <select name="voiceSelector" id="voiceSelector" class="bg-white rounded-lg w-48 outline-gray-300 outline-1"></select>
             </div>
         </div>
         <!-- Output and volume controls -->
         <!-- Output -->
-        <div class="mx-4 mt-4 p-4 bg-white rounded-3xl">
+        <div class="mx-4 mt-4 p-4 bg-white rounded-3xl shadow">
             <div class="flex justify-between mb-3">
-                <h4>Output</h4>
+                <h4 class="font-bold">Output</h4>
                 <!-- Checkbox -->
                 <div>
                     <label class="relative inline-flex items-center cursor-pointer text-gray-900 gap-3">
-                        <input type="checkbox" class="sr-only peer" />
+                        <input type="checkbox" class="sr-only peer" id="outputCheckbox"/>
                         <div class="w-10 h-6 bg-neutral-300 rounded-full peer peer-checked:bg-indigo-500 transition-colors duration-200"></div>
                         <span class="dot absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ease-in-out peer-checked:translate-x-4"></span>
                     </label>
@@ -56,19 +56,23 @@
             </div>
             <!-- Device Selector -->
             <div>
-                <select name="outputSelector" id="outputSelector" class="bg-white mb-3 rounded-lg w-full outline-gray-200 outline-1"></select>
+                <select name="outputSelector" id="outputSelector" class="bg-white mb-3 rounded-lg w-full outline-gray-300 outline-1"></select>
             </div>
             <!-- Volume Slider -->
-            <input id="default-range" type="range" value="50" class="w-full h-2 rounded-full bg-neutral-300 accent-indigo-500 cursor-pointer outline-none hover:accent-indigo-500">
+             <div class="flex items-center justify-center w-full gap-1">
+                 <!-- <img src="assets/mute.svg" alt="mute-vol"> -->
+                 <input id="outputSlider" type="range" value="50" class="w-full h-2 rounded-full bg-neutral-300 accent-indigo-500 cursor-pointer outline-none hover:accent-indigo-500">
+                 <img src="assets/volume.svg" alt="max-vol">
+             </div>
         </div>
         <!-- Monitoring -->
-        <div class="mx-4 mt-4 p-4 bg-white rounded-3xl">
+        <div class="mx-4 mt-4 p-4 bg-white rounded-3xl shadow">
             <div class="flex justify-between mb-3">
-                <h4>Monitoring</h4>
+                <h4 class="font-bold">Monitoring</h4>
                 <!-- Checkbox -->
                 <div>
                     <label class="relative inline-flex items-center cursor-pointer text-gray-900 gap-3">
-                        <input type="checkbox" class="sr-only peer" />
+                        <input type="checkbox" class="sr-only peer" id="monitoringCheckbox"/>
                         <div class="w-10 h-6 bg-neutral-300 rounded-full peer peer-checked:bg-indigo-500 transition-colors duration-200"></div>
                         <span class="dot absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ease-in-out peer-checked:translate-x-4"></span>
                     </label>
@@ -76,10 +80,14 @@
             </div>
             <!-- Device Selector -->
             <div>
-                <select name="outputSelector" id="outputSelector" class="bg-white mb-3 rounded-lg w-full outline-gray-200 outline-1"></select>
+                <select name="monitoringSelector" id="monitoringSelector" class="bg-white mb-3 rounded-lg w-full outline-gray-300 outline-1"></select>
             </div>
             <!-- Volume Slider -->
-            <input id="default-range" type="range" value="50" class="w-full h-2 rounded-full bg-neutral-300 accent-indigo-500 cursor-pointer outline-none hover:accent-indigo-500">
+             <div class="flex items-center justify-center w-full gap-1">
+                <!-- <img src="assets/mute.svg" alt="mute-vol"> -->
+                <input id="monitoringSlider" type="range" value="50" class="w-full h-2 rounded-full bg-neutral-300 accent-indigo-500 cursor-pointer outline-none hover:accent-indigo-500">
+                <img src="assets/volume.svg" alt="max-vol">
+             </div>
         </div>
     </div>
     <!-- Settings will go here -->

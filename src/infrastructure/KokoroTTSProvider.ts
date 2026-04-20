@@ -107,6 +107,6 @@ export class KokoroTTSProvider implements ITTSService {
         
         // Play the saved .wav file (HistoryManager saves newest to tts_output_0.wav)
         const finalFilePath = path.join(process.cwd(), 'src', 'audio', 'tts_output_0.wav');
-        await this.audioService.play(finalFilePath, appConfig.playbackDevice, appConfig.volume, appConfig.monitoring, appConfig.monitoringDevice, appConfig.monitoringVolume);
+        await this.audioService.play(finalFilePath, appConfig.playback, appConfig.playbackDevice, appConfig.volume, appConfig.monitoring, appConfig.monitoringDevice, appConfig.monitoringVolume);
     }
 }

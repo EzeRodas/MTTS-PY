@@ -11,6 +11,9 @@ declare global {
             getVoices: () => Promise<string[]>;
             getActiveVoice: () => Promise<string>;
             setVoice: (voice: string) => Promise<void>;
+            getAppConfig: () => Promise<any>;
+            updateAppConfig: (config: any) => Promise<void>;
+            getDevices: () => Promise<any[]>;
         };
     }
 }

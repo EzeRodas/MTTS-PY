@@ -1,4 +1,5 @@
 export interface AppConfig {
+    playback: boolean;
     volume: number;
     playbackDevice: string | null;
     monitoring: boolean;
