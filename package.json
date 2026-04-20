@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc && npm run build:ui",
-    "build:ui": "esbuild src/ui/preload.ts --bundle --platform=node --external:electron --target=node16 --outfile=dist/ui/preload.cjs && esbuild src/ui/renderer.ts --bundle --format=esm --outfile=dist/ui/renderer.bundle.js",
+    "build:ui": "esbuild src/ui/preload.ts --bundle --platform=node --external:electron --target=node16 --outfile=dist/ui/preload.cjs && esbuild src/ui/renderer.ts --bundle --format=esm --outfile=dist/ui/renderer.bundle.js && esbuild src/ui/settings.ts --bundle --format=esm --outfile=dist/ui/settings.bundle.js",
     "start": "node dist/index.js",
     "dev": "npm run build && npm start",
     "electron:start": "npm run build && electron dist/ui/main.js --ozone-platform=x11"
@@ -21,7 +21,6 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
-    "@tailwindcss/cli": "^4.2.2",
     "audic": "^3.0.2",
     "kokoro-js": "^1.2.1",
     "onnxruntime-node": "^1.24.3",

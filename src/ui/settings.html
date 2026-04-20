@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <title>Settings</title>
+    <link rel="stylesheet" href="style.css">
+<style>
+    @font-face {
+        font-family: Nunito;
+        src: url(assets/Nunito-VariableFont_wght.ttf);
+    }
+    * {
+        box-sizing: border-box;
+        user-select: none;
+        margin: 0;
+        border: none;
+        outline: none;
+        font-family: Nunito;
+    }
+    html {
+        background-color: transparent;
+        color: #333;
+    }
+    button {
+        margin: 0;
+        padding: 0;
+        border: 0;
+    }
+    select {
+        width: 200px;
+        border: 1px,solid,#ddd;
+    }
+    .settings {
+        display: block;
+        flex-grow: 1;
+        height: 100vh;
+        width: 100vw;
+        background-color: rgba(255, 255, 255, .9);
+    }
+    .header {
+        width: 100%;
+        padding: 12px;
+    }
+    .card {
+        margin-inline: 16px;
+        margin-top: 8px;
+        padding: 8px;
+    }
+    .flex {
+        display: flex;
+    }
+    .white {
+        background-color: white;
+    }
+    .round {
+        border-radius: 24px;
+    }
+    .tiny-round {
+        border-radius: 4px;
+    }
+    .drag {
+        -webkit-app-region: drag;
+    }
+    .centered-flex {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .spaced-flex {
+        display: flex;
+        justify-content:space-between;
+    }
+    .margin-right {
+        margin-right: 16px;
+    }
+    .pointer {
+        cursor: pointer;
+    }
+    .no-outline {
+        outline: none;
+    }
+    .svg{
+        img {
+            width: 32px;
+            height: 32px;
+        }
+    }
+    .interact:hover {
+        background-color: #ddd;
+        transition: .15s;
+    }
+    #closeSettingsBtn {
+        cursor: pointer;
+        font-weight: bold;
+        background: none;
+        font-size: 1.2rem;
+        -webkit-app-region: no-drag;
+    }
+</style>
+</head>
+<body class="">
+    <div class="drag round settings">
+        <div class="header spaced-flex">
+            <h2>Settings</h2>
+            <button id="closeSettingsBtn">X</button>
+        </div>
+        <div class="card white round">
+            <div class="spaced-flex">
+                <h4>Voice:</h4>
+                <select name="voiceSelector" id="voiceSelector" class="white tiny-round"></select>
+            </div>
+            <div class="spaced-flex">
+                <h4>Voice:</h4>
+                <select name="voiceSelector" id="voiceSelector" class="white tiny-round"></select>
+            </div>
+        </div>
+    </div>
+    <!-- Settings will go here -->
+    <script type="module" src="../../dist/ui/settings.bundle.js"></script>
+</body>
+</html>

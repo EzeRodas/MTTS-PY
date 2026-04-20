@@ -3,6 +3,8 @@ declare global {
         api: {
             submitText: (text: string) => Promise<void>;
             closeApp: () => void;
+            openSettings: (bounds: { x: number, y: number, width: number, height: number }) => void;
+            closeSettings: () => void;
         };
     }
 }
@@ -11,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement;
     const textArea = document.getElementById('textArea') as HTMLTextAreaElement;
     const closeBtn = document.getElementById('closeBtn') as HTMLButtonElement;
+    const settingsBtn = document.getElementById('settingsBtn') as HTMLButtonElement;
 
     let isProcessing = false;
 
@@ -47,6 +50,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (closeBtn) {
         closeBtn.addEventListener('click', () => {
             window.api.closeApp();
+        });
+    }
+
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', () => {
+            const rect = settingsBtn.getBoundingClientRect();
+            window.api.openSettings({
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height
+            });
         });
     }
 });

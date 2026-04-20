@@ -18,6 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
 let appController: AppController;
 
 const electronSettingsPath = path.join(app.getPath('userData'), 'electron-settings.json');
@@ -83,6 +84,8 @@ async function createWindow() {
         frame: false,
         transparent: true,
         autoHideMenuBar: true,
+        resizable: false,
+        maximizable: false,
         show: false, // Create hidden
         webPreferences: {
             preload: path.join(__dirname, 'preload.cjs'),
@@ -118,13 +121,60 @@ app.whenReady().then(async () => {
     
     ipcMain.handle('submit-text', async (event, text: string) => {
         if (appController) {
-            // Passing text to the black box controller
+            // Passing text to the controller
             await appController.processInput(text);
         }
     });
 
     ipcMain.on('close-app', () => {
         app.quit();
+    });
+
+    ipcMain.on('open-settings', (event, buttonBounds: { x: number, y: number, width: number, height: number }) => {
+        if (settingsWindow) {
+            settingsWindow.focus();
+            return;
+        }
+
+        if (!mainWindow) return;
+
+        const mainBounds = mainWindow.getBounds();
+        const settingsWidth = 400;
+        const settingsHeight = 500;
+        
+        // Aligned with left margin, extending upwards and to the right
+        const x = mainBounds.x + Math.floor(buttonBounds.x);
+        const y = mainBounds.y + Math.floor(buttonBounds.y) - settingsHeight;
+
+        settingsWindow = new BrowserWindow({
+            width: settingsWidth,
+            height: settingsHeight,
+            x: x,
+            y: y - 16,
+            frame: false,
+            transparent: true,
+            resizable: false,
+            maximizable: false,
+            autoHideMenuBar: true,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.cjs'),
+                contextIsolation: true,
+                nodeIntegration: false
+            }
+        });
+
+        settingsWindow.setMenu(null);
+        settingsWindow.loadFile(path.join(__dirname, '../../src/ui/settings.html'));
+
+        settingsWindow.on('closed', () => {
+            settingsWindow = null;
+        });
+    });
+
+    ipcMain.on('close-settings', () => {
+        if (settingsWindow) {
+            settingsWindow.close();
+        }
     });
 
     await createWindow();
