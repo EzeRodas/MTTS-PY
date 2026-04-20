@@ -88,15 +88,20 @@ async function createWindow() {
         maximizable: false,
         show: false, // Create hidden
         webPreferences: {
-            preload: path.join(__dirname, 'preload.cjs'),
+            preload: path.join(__dirname, '../preload/preload.mjs'),
             contextIsolation: true,
-            nodeIntegration: false
+            nodeIntegration: false,
+            sandbox: false
         },
         icon: path.join(__dirname,'assets/icon.jpg')
     });
     
     mainWindow.setMenu(null);
-    await mainWindow.loadFile(path.join(__dirname, '../../src/ui/index.html'));
+    if (process.env['ELECTRON_RENDERER_URL']) {
+        await mainWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/index.html`);
+    } else {
+        await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    }
     
     mainWindow.once('ready-to-show', () => {
         if (mainWindow) {
@@ -123,6 +128,34 @@ app.whenReady().then(async () => {
         if (appController) {
             // Passing text to the controller
             await appController.processInput(text);
+        }
+    });
+
+    ipcMain.handle('get-models', () => {
+        return appController ? appController.listModels() : [];
+    });
+
+    ipcMain.handle('get-active-model', () => {
+        return appController ? appController.getActiveModel() : null;
+    });
+
+    ipcMain.handle('set-model', (event, model: string) => {
+        if (appController) {
+            appController.setModel(model);
+        }
+    });
+
+    ipcMain.handle('get-voices', async () => {
+        return appController ? await appController.listVoices() : [];
+    });
+
+    ipcMain.handle('get-active-voice', async () => {
+        return appController ? await appController.getActiveVoice() : null;
+    });
+
+    ipcMain.handle('set-voice', async (event, voice: string) => {
+        if (appController) {
+            await appController.setVoice(voice);
         }
     });
 
@@ -157,16 +190,21 @@ app.whenReady().then(async () => {
             maximizable: false,
             autoHideMenuBar: true,
             webPreferences: {
-                preload: path.join(__dirname, 'preload.cjs'),
+                preload: path.join(__dirname, '../preload/preload.mjs'),
                 contextIsolation: true,
-                nodeIntegration: false
+                nodeIntegration: false,
+                sandbox: false
             }
-        });
+            });
 
-        settingsWindow.setMenu(null);
-        settingsWindow.loadFile(path.join(__dirname, '../../src/ui/settings.html'));
+            settingsWindow.setMenu(null);
+            if (process.env['ELECTRON_RENDERER_URL']) {
+            settingsWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/settings.html`);
+            } else {
+            settingsWindow.loadFile(path.join(__dirname, '../renderer/settings.html'));
+            }
 
-        settingsWindow.on('closed', () => {
+            settingsWindow.on('closed', () => {
             settingsWindow = null;
         });
     });

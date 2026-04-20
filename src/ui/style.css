@@ -1,0 +1,5 @@
+@import "tailwindcss";
+@font-face {
+    font-family: Nunito;
+    src: url(assets/Nunito-VariableFont_wght.ttf);
+}

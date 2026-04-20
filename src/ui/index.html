@@ -6,103 +6,34 @@
     <title>MTTS-JS TTS</title>
     <link rel="stylesheet" href="style.css">
 <style>
-    @font-face {
-        font-family: Nunito;
-        src: url(assets/Nunito-VariableFont_wght.ttf);
-    }
-    * {
-        box-sizing: border-box;
-        user-select: none;
-        margin: 0;
-        border: none;
-        outline: none;
-        font-family: Nunito;
-    }
-
-    html {
-        background-color: transparent;
-
-    }
-
-    body {
-        height: 48px;
-        width: 1024px;
-        margin: 16px;
-    }
-    button {
-        margin: 0;
-        padding: 0;
-        border: 0;
-    }
-    .flex {
-        display: flex;
-    }
-    .white {
-        background-color: white;
-    }
-    .round {
-        border-radius: 24px;
-    }
-    .drag {
-        -webkit-app-region: drag;
-    }
-    .centered-flex {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .squared {
-        width: 48px;
-        height: 48px;
-    }
-    .margin-right {
-        margin-right: 16px;
-    }
-    .pointer {
-        cursor: pointer;
-    }
-    .no-outline {
-        outline: none;
-    }
-    .svg{
-        img {
-            width: 32px;
-            height: 32px;
-        }
-    }
     .interact:hover {
         background-color: #ddd;
         transition: .15s;
-    }
-    #textArea {
-        display: flex;
-        flex-grow: 1;
-        resize: none;
-        border: none;
-        padding-inline: 16px;
-        font-size: 16px;
-        color: #333;
-    }
-    #closeBtn {
-        width: 20px;
-        height: 20px;
-        margin-left: 8px;
-        font-weight: bold;
     }
 </style>
 
 </head>
 
-<body>
+<body class="h-12 w-5xl m-4 box-border outline-none select-none border-none font-[Nunito] text-gray-700">
     <div class="flex">
-        <a class="round squared centered-flex no-outline margin-right" draggable="false" href=""><img src="assets/icon.png" draggable="false" alt="mtts-icon" style="width: 100%; height: 100%;"></a>
-        <div id="dragArea" class="interact svg round squared drag centered-flex white pointer margin-right"><img src="assets/drag.svg" draggable="false" alt="drag button"></div>
-        <button id="settingsBtn" class="svg interact pointer round squared white margin-right centered-flex"><img src="assets/settings.svg" draggable="false" alt="settings button"></button>
-        <input id="textArea" rows="1" class="round margin-right no-outline centered-flex" placeholder="Enter text to synthesize..."></textarea>
-        <button id="submitBtn" class="interact svg white round centered-flex squared pointer"><img src="assets/rocket.svg" draggable="false" alt="send button"></button>
-        <button id="closeBtn" class="white round pointer interact">X</button>
+        <a class="rounded-3xl h-12 aspect-square mr-4" draggable="false" href="">
+            <img src="assets/icon.png" draggable="false" alt="mtts-icon" style="width: 100%; height: 100%;">
+        </a>
+        <div id="dragArea" class="hover:bg-gray-300 transition-[.2s] svg rounded-3xl h-12 w-12 [-webkit-app-region:drag] flex justify-center items-center bg-white cursor-pointer mr-4">
+            <img src="assets/drag.svg" draggable="false" alt="drag button" class="w-8 h-8">
+        </div>
+        <button id="settingsBtn" class="svg hover:bg-gray-300 transition-[.2s] cursor-pointer rounded-3xl h-12 w-12 bg-white mr-4 flex justify-center items-center">
+            <img src="assets/settings.svg" draggable="false" alt="settings button" class="w-8 h-8">
+        </button>
+        <input id="textArea" class="rounded-3xl mr-4 bg-white no-outline flex justify-center items-center px-4 grow outline-none text-[20px]" placeholder="Enter text to synthesize...">
+        <button id="submitBtn" class="hover:bg-gray-300 transition-[.2s] svg bg-white rounded-3xl flex justify-center items-center h-12 w-12 cursor-pointer">
+            <img src="assets/rocket.svg" draggable="false" alt="send button" class="w-8 h-8">
+        </button>
+        <button id="closeBtn" class="bg-white rounded-3xl w-5 h-5 ml-2 font-bold cursor-pointer hover:bg-gray-300 transition-[.2s] text-[14px]">
+            X
+        </button>
     </div>
 
-    <script type="module" src="../../dist/ui/renderer.bundle.js"></script>
+    <script type="module" src="/renderer.ts"></script>
 </body>
 </html>

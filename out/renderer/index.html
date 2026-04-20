@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <title>MTTS-JS TTS</title>
+<style>
+    .interact:hover {
+        background-color: #ddd;
+        transition: .15s;
+    }
+</style>
+
+  <script type="module" crossorigin src="./assets/index-7-eiQv16.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/style-BVeqBY8v.css">
+</head>
+
+<body class="h-12 w-5xl m-4 box-border outline-none select-none border-none font-[Nunito] text-gray-700">
+    <div class="flex">
+        <a class="rounded-3xl h-12 aspect-square mr-4" draggable="false" href="">
+            <img src="./assets/icon-C5E-rQWU.png" draggable="false" alt="mtts-icon" style="width: 100%; height: 100%;">
+        </a>
+        <div id="dragArea" class="hover:bg-gray-300 transition-[.2s] svg rounded-3xl h-12 w-12 [-webkit-app-region:drag] flex justify-center items-center bg-white cursor-pointer mr-4">
+            <img src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23333'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%20class='icon%20icon-tabler%20icons-tabler-outline%20icon-tabler-arrows-move'%3e%3cpath%20stroke='none'%20d='M0%200h24v24H0z'%20fill='none'%20/%3e%3cpath%20d='M18%209l3%203l-3%203'%20/%3e%3cpath%20d='M15%2012h6'%20/%3e%3cpath%20d='M6%209l-3%203l3%203'%20/%3e%3cpath%20d='M3%2012h6'%20/%3e%3cpath%20d='M9%2018l3%203l3%20-3'%20/%3e%3cpath%20d='M12%2015v6'%20/%3e%3cpath%20d='M15%206l-3%20-3l-3%203'%20/%3e%3cpath%20d='M12%203v6'%20/%3e%3c/svg%3e" draggable="false" alt="drag button" class="w-8 h-8">
+        </div>
+        <button id="settingsBtn" class="svg hover:bg-gray-300 transition-[.2s] cursor-pointer rounded-3xl h-12 w-12 bg-white mr-4 flex justify-center items-center">
+            <img src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23333'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%20class='icon%20icon-tabler%20icons-tabler-outline%20icon-tabler-settings'%3e%3cpath%20stroke='none'%20d='M0%200h24v24H0z'%20fill='none'%20/%3e%3cpath%20d='M10.325%204.317c.426%20-1.756%202.924%20-1.756%203.35%200a1.724%201.724%200%200%200%202.573%201.066c1.543%20-.94%203.31%20.826%202.37%202.37a1.724%201.724%200%200%200%201.065%202.572c1.756%20.426%201.756%202.924%200%203.35a1.724%201.724%200%200%200%20-1.066%202.573c.94%201.543%20-.826%203.31%20-2.37%202.37a1.724%201.724%200%200%200%20-2.572%201.065c-.426%201.756%20-2.924%201.756%20-3.35%200a1.724%201.724%200%200%200%20-2.573%20-1.066c-1.543%20.94%20-3.31%20-.826%20-2.37%20-2.37a1.724%201.724%200%200%200%20-1.065%20-2.572c-1.756%20-.426%20-1.756%20-2.924%200%20-3.35a1.724%201.724%200%200%200%201.066%20-2.573c-.94%20-1.543%20.826%20-3.31%202.37%20-2.37c1%20.608%202.296%20.07%202.572%20-1.065'%20/%3e%3cpath%20d='M9%2012a3%203%200%201%200%206%200a3%203%200%200%200%20-6%200'%20/%3e%3c/svg%3e" draggable="false" alt="settings button" class="w-8 h-8">
+        </button>
+        <input id="textArea" class="rounded-3xl mr-4 bg-white no-outline flex justify-center items-center px-4 grow outline-none text-[20px]" placeholder="Enter text to synthesize...">
+        <button id="submitBtn" class="hover:bg-gray-300 transition-[.2s] svg bg-white rounded-3xl flex justify-center items-center h-12 w-12 cursor-pointer">
+            <img src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23333'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%20class='icon%20icon-tabler%20icons-tabler-outline%20icon-tabler-rocket'%3e%3cpath%20stroke='none'%20d='M0%200h24v24H0z'%20fill='none'%20/%3e%3cpath%20d='M4%2013a8%208%200%200%201%207%207a6%206%200%200%200%203%20-5a9%209%200%200%200%206%20-8a3%203%200%200%200%20-3%20-3a9%209%200%200%200%20-8%206a6%206%200%200%200%20-5%203'%20/%3e%3cpath%20d='M7%2014a6%206%200%200%200%20-3%206a6%206%200%200%200%206%20-3'%20/%3e%3cpath%20d='M14%209a1%201%200%201%200%202%200a1%201%200%201%200%20-2%200'%20/%3e%3c/svg%3e" draggable="false" alt="send button" class="w-8 h-8">
+        </button>
+        <button id="closeBtn" class="bg-white rounded-3xl w-5 h-5 ml-2 font-bold cursor-pointer hover:bg-gray-300 transition-[.2s]">
+            X
+        </button>
+    </div>
+
+</body>
+</html>

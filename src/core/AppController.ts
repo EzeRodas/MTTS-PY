@@ -121,6 +121,10 @@ Available commands:
         return false;
     }
 
+    public getActiveModel(): string {
+        return this.activeModel;
+    }
+
     private handleModelCommand(args: string[]): void {
         if (args.length === 0) {
             console.log('Usage: /model --list OR /model <model_name>');
@@ -141,6 +145,12 @@ Available commands:
 
     public async listVoices(): Promise<string[]> {
         return await this.ttsService.getVoices();
+    }
+
+    public async getActiveVoice(): Promise<string> {
+        // Hardcoded to kokoro for now since it's the only engine
+        const config = await this.settingsManager.getEngineConfig<{voiceId: string}>('kokoro', { voiceId: 'af_heart' });
+        return config.voiceId;
     }
 
     public async setVoice(voiceName: string): Promise<void> {
