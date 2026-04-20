@@ -1,4 +1,4 @@
-import { app, ipcMain, BrowserWindow, screen } from "electron";
+import { app, ipcMain, BrowserWindow, screen, Tray, Menu } from "electron";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as fs from "node:fs/promises";
@@ -899,6 +899,8 @@ const __dirname$1 = path.dirname(__filename$1);
 let mainWindow = null;
 let settingsWindow = null;
 let appController;
+let tray = null;
+let isQuitting = false;
 const electronSettingsPath = path.join(app.getPath("userData"), "electron-settings.json");
 async function loadElectronSettings() {
   if (existsSync(electronSettingsPath)) {
@@ -977,13 +979,48 @@ async function createWindow() {
       mainWindow.show();
     }
   });
-  mainWindow.on("close", () => {
+  mainWindow.on("hide", () => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.hide();
+    }
+  });
+  mainWindow.on("close", (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      if (mainWindow) {
+        mainWindow.hide();
+        if (settingsWindow && !settingsWindow.isDestroyed()) {
+          settingsWindow.hide();
+        }
+        const currentDisplay = screen.getDisplayMatching(mainWindow.getBounds());
+        saveElectronSettings({ lastDisplayId: currentDisplay.id });
+      }
+      return;
+    }
     if (mainWindow) {
       const currentDisplay = screen.getDisplayMatching(mainWindow.getBounds());
       saveElectronSettings({ lastDisplayId: currentDisplay.id });
     }
   });
   mainWindow.webContents.openDevTools({ mode: "detach" });
+}
+function createTray() {
+  const iconPath = path.join(__dirname$1, "../../src/ui/assets/icon.png");
+  tray = new Tray(iconPath);
+  const contextMenu = Menu.buildFromTemplate([
+    { label: "Show", click: () => {
+      mainWindow?.show();
+    } },
+    { label: "Exit Moon-TTS", click: () => {
+      isQuitting = true;
+      app.quit();
+    } }
+  ]);
+  tray.setToolTip("Moon-TTS");
+  tray.setContextMenu(contextMenu);
+  tray.on("click", () => {
+    mainWindow?.show();
+  });
 }
 async function createSettingsWindow() {
   settingsWindow = new BrowserWindow({
@@ -1010,9 +1047,11 @@ async function createSettingsWindow() {
     await settingsWindow.loadFile(path.join(__dirname$1, "../renderer/settings.html"));
   }
   settingsWindow.on("close", (event) => {
-    event.preventDefault();
-    if (settingsWindow) {
-      settingsWindow.hide();
+    if (!isQuitting) {
+      event.preventDefault();
+      if (settingsWindow) {
+        settingsWindow.hide();
+      }
     }
   });
 }
@@ -1057,7 +1096,9 @@ app.whenReady().then(async () => {
     return appController ? await appController.getDevices() : [];
   });
   ipcMain.on("close-app", () => {
-    app.quit();
+    if (mainWindow) {
+      mainWindow.close();
+    }
   });
   ipcMain.on("open-settings", (event, buttonBounds) => {
     if (!settingsWindow || !mainWindow) return;
@@ -1079,6 +1120,7 @@ app.whenReady().then(async () => {
   });
   await createWindow();
   await createSettingsWindow();
+  createTray();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, Tray, Menu } from 'electron';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as fs from 'node:fs/promises';
@@ -20,6 +20,8 @@ const __dirname = path.dirname(__filename);
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let appController: AppController;
+let tray: Tray | null = null;
+let isQuitting = false;
 
 const electronSettingsPath = path.join(app.getPath('userData'), 'electron-settings.json');
 
@@ -111,7 +113,26 @@ async function createWindow() {
         }
     });
 
-    mainWindow.on('close', () => {
+    mainWindow.on('hide', () => {
+        if (settingsWindow && !settingsWindow.isDestroyed()) {
+            settingsWindow.hide();
+        }
+    });
+
+    mainWindow.on('close', (event) => {
+        if (!isQuitting) {
+            event.preventDefault();
+            if (mainWindow) {
+                mainWindow.hide();
+                if (settingsWindow && !settingsWindow.isDestroyed()) {
+                    settingsWindow.hide();
+                }
+                const currentDisplay = screen.getDisplayMatching(mainWindow.getBounds());
+                saveElectronSettings({ lastDisplayId: currentDisplay.id });
+            }
+            return;
+        }
+
         if (mainWindow) {
             const currentDisplay = screen.getDisplayMatching(mainWindow.getBounds());
             saveElectronSettings({ lastDisplayId: currentDisplay.id });
@@ -119,6 +140,20 @@ async function createWindow() {
     });
 
     mainWindow.webContents.openDevTools({ mode: 'detach' });
+}
+
+function createTray() {
+    const iconPath = path.join(__dirname, '../../src/ui/assets/icon.png');
+    tray = new Tray(iconPath);
+    const contextMenu = Menu.buildFromTemplate([
+        { label: 'Show', click: () => { mainWindow?.show(); } },
+        { label: 'Exit Moon-TTS', click: () => { isQuitting = true; app.quit(); } }
+    ]);
+    tray.setToolTip('Moon-TTS');
+    tray.setContextMenu(contextMenu);
+    tray.on('click', () => {
+        mainWindow?.show();
+    });
 }
 
 async function createSettingsWindow() {
@@ -147,9 +182,11 @@ async function createSettingsWindow() {
     }
 
     settingsWindow.on('close', (event) => {
-        event.preventDefault(); // Don't destroy window
-        if (settingsWindow) {
-            settingsWindow.hide();
+        if (!isQuitting) {
+            event.preventDefault(); // Don't destroy window
+            if (settingsWindow) {
+                settingsWindow.hide();
+            }
         }
     });
 }
@@ -207,7 +244,9 @@ app.whenReady().then(async () => {
     });
 
     ipcMain.on('close-app', () => {
-        app.quit();
+        if (mainWindow) {
+            mainWindow.close(); // Triggers the hide-to-tray logic
+        }
     });
 
     ipcMain.on('open-settings', (event, buttonBounds: { x: number, y: number, width: number, height: number }) => {
@@ -237,6 +276,7 @@ app.whenReady().then(async () => {
 
     await createWindow();
     await createSettingsWindow();
+    createTray();
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
