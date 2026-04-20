@@ -6,6 +6,8 @@ export interface AppConfig {
     monitoringDevice: string | null;
     monitoringVolume: number;
     modelsPath: string;
+    appShortcut: string;
+    defaultAppShortcut: string;
 }
 
 export interface ISettingsManager {

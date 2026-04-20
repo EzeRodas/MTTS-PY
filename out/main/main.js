@@ -1,4 +1,4 @@
-import { app, ipcMain, BrowserWindow, screen, Tray, Menu } from "electron";
+import { app, ipcMain, BrowserWindow, globalShortcut, screen, Tray, Menu } from "electron";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as fs from "node:fs/promises";
@@ -36,7 +36,9 @@ class SettingsManager {
     monitoring: false,
     monitoringDevice: null,
     monitoringVolume: 1,
-    modelsPath: this.getModelsDirectory()
+    modelsPath: this.getModelsDirectory(),
+    appShortcut: "CommandOrControl+Alt+M",
+    defaultAppShortcut: "CommandOrControl+Alt+M"
   };
   constructor() {
     this.appConfigDir = path.join(process.cwd(), "src", "settings");
@@ -1055,8 +1057,30 @@ async function createSettingsWindow() {
     }
   });
 }
+function registerAppShortcut(shortcut) {
+  globalShortcut.unregisterAll();
+  if (shortcut) {
+    try {
+      globalShortcut.register(shortcut, () => {
+        if (mainWindow) {
+          if (mainWindow.isVisible()) {
+            mainWindow.hide();
+          } else {
+            mainWindow.show();
+          }
+        }
+      });
+    } catch (e) {
+      console.error("Failed to register shortcut", e);
+    }
+  }
+}
 app.whenReady().then(async () => {
   await bootstrapBackend();
+  const initialConfig = await appController.getAppConfig();
+  if (initialConfig && initialConfig.appShortcut) {
+    registerAppShortcut(initialConfig.appShortcut);
+  }
   ipcMain.handle("submit-text", async (event, text) => {
     if (appController) {
       await appController.processInput(text);
@@ -1090,6 +1114,9 @@ app.whenReady().then(async () => {
   ipcMain.handle("update-app-config", async (event, config) => {
     if (appController) {
       await appController.updateAppConfig(config);
+      if (config.appShortcut !== void 0) {
+        registerAppShortcut(config.appShortcut);
+      }
     }
   });
   ipcMain.handle("get-devices", async () => {
@@ -1132,4 +1159,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });

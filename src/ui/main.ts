@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen, Tray, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, Tray, Menu, globalShortcut } from 'electron';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as fs from 'node:fs/promises';
@@ -191,8 +191,32 @@ async function createSettingsWindow() {
     });
 }
 
+function registerAppShortcut(shortcut: string) {
+    globalShortcut.unregisterAll();
+    if (shortcut) {
+        try {
+            globalShortcut.register(shortcut, () => {
+                if (mainWindow) {
+                    if (mainWindow.isVisible()) {
+                        mainWindow.hide();
+                    } else {
+                        mainWindow.show();
+                    }
+                }
+            });
+        } catch (e) {
+            console.error('Failed to register shortcut', e);
+        }
+    }
+}
+
 app.whenReady().then(async () => {
     await bootstrapBackend();
+    
+    const initialConfig = await appController.getAppConfig();
+    if (initialConfig && initialConfig.appShortcut) {
+        registerAppShortcut(initialConfig.appShortcut);
+    }
     
     ipcMain.handle('submit-text', async (event, text: string) => {
         if (appController) {
@@ -236,6 +260,9 @@ app.whenReady().then(async () => {
     ipcMain.handle('update-app-config', async (event, config: any) => {
         if (appController) {
             await appController.updateAppConfig(config);
+            if (config.appShortcut !== undefined) {
+                registerAppShortcut(config.appShortcut);
+            }
         }
     });
 
@@ -290,4 +317,8 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit();
     }
+});
+
+app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
 });

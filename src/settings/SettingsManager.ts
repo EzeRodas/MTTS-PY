@@ -32,7 +32,9 @@ export class SettingsManager implements ISettingsManager {
         monitoring: false,
         monitoringDevice: null,
         monitoringVolume: 1.0,
-        modelsPath: this.getModelsDirectory()
+        modelsPath: this.getModelsDirectory(),
+        appShortcut: 'CommandOrControl+Alt+M',
+        defaultAppShortcut: 'CommandOrControl+Alt+M'
     };
 
     constructor() {
