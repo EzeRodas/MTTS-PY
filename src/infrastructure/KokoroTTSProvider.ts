@@ -1,11 +1,38 @@
 import { ITTSService } from '../core/interfaces/ITTSService.js';
 import { ISettingsManager } from '../core/interfaces/ISettingsManager.js';
 import { KokoroTTS, GenerateOptions } from 'kokoro-js';
+import { env } from '@huggingface/transformers';
 import { AudioService } from './AudioService.js';
 import { HistoryManager } from '../core/HistoryManager.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
+
+// Configure transformers to use a local disk path instead of inside app.asar
+// This is critical for packaged apps using onnxruntime-node.
+if (process.versions.electron) {
+    const homeDir = os.homedir();
+    const appName = 'Moon-TTS';
+    let userDataPath = '';
+    
+    switch (process.platform) {
+        case 'win32':
+            userDataPath = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), appName);
+            break;
+        case 'darwin':
+            userDataPath = path.join(homeDir, 'Library', 'Application Support', appName);
+            break;
+        case 'linux':
+        case 'android':
+        default:
+            userDataPath = path.join(process.env.XDG_DATA_HOME || path.join(homeDir, '.local', 'share'), appName);
+            break;
+    }
+    
+    env.cacheDir = path.join(userDataPath, '.cache');
+    // Ensure cache dir exists
+    fs.mkdir(env.cacheDir, { recursive: true }).catch(() => {});
+}
 
 export interface KokoroConfig {
     voiceId: string;
@@ -106,7 +133,7 @@ export class KokoroTTSProvider implements ITTSService {
         } catch(e) {}
         
         // Play the saved .wav file (HistoryManager saves newest to tts_output_0.wav)
-        const finalFilePath = path.join(process.cwd(), 'src', 'audio', 'tts_output_0.wav');
+        const finalFilePath = path.join(this.settingsManager.getAppDirectory(), 'audio', 'tts_output_0.wav');
         await this.audioService.play(finalFilePath, appConfig.playback, appConfig.playbackDevice, appConfig.volume, appConfig.monitoring, appConfig.monitoringDevice, appConfig.monitoringVolume);
     }
 }

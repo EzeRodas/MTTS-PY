@@ -7,7 +7,8 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: resolve(__dirname, 'src/ui/main.ts')
+        input: resolve(__dirname, 'src/ui/main.ts'),
+        external: ['sharp']
       }
     }
   },

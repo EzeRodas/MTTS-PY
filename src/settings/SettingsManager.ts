@@ -9,7 +9,7 @@ export class SettingsManager implements ISettingsManager {
     private appConfigPath: string;
     private engineConfigDir: string;
     
-    private getModelsDirectory(): string {
+    public getAppDirectory(): string {
         const homeDir = os.homedir();
         const appName = 'Moon-TTS';
 
@@ -32,14 +32,15 @@ export class SettingsManager implements ISettingsManager {
         monitoring: false,
         monitoringDevice: null,
         monitoringVolume: 1.0,
-        modelsPath: this.getModelsDirectory(),
+        modelsPath: path.join(this.getAppDirectory(), 'models'),
         appShortcut: 'CommandOrControl+Alt+M',
         defaultAppShortcut: 'CommandOrControl+Alt+M'
     };
 
     constructor() {
-        this.appConfigDir = path.join(process.cwd(), 'src', 'settings');
-        this.engineConfigDir = path.join(process.cwd(), 'src', 'infrastructure');
+        const baseDir = this.getAppDirectory();
+        this.appConfigDir = path.join(baseDir, 'settings');
+        this.engineConfigDir = path.join(baseDir, 'infrastructure');
         this.appConfigPath = path.join(this.appConfigDir, 'app_config.json');
     }
 

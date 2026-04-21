@@ -5,7 +5,15 @@ import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 // Disable hardware acceleration if GPU process crashes
-app.disableHardwareAcceleration();
+if (process.platform !== 'linux') {
+    app.disableHardwareAcceleration();
+}
+
+if (process.platform === 'linux') {
+    app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+    app.commandLine.appendSwitch('enable-features', 'WaylandWindowDecorations');
+    app.commandLine.appendSwitch('enable-transparent-visuals');
+}
 
 import { SettingsManager } from '../settings/SettingsManager.js';
 import { KokoroTTSProvider } from '../infrastructure/KokoroTTSProvider.js';
@@ -29,6 +37,7 @@ async function loadElectronSettings() {
     if (existsSync(electronSettingsPath)) {
         try {
             const data = await fs.readFile(electronSettingsPath, 'utf-8');
+            if (!data.trim()) return {}; // Handle empty file
             return JSON.parse(data);
         } catch (e) {
             console.error('Failed to load electron settings:', e);
@@ -95,7 +104,7 @@ async function createWindow() {
             nodeIntegration: false,
             sandbox: false
         },
-        icon: path.join(__dirname,'assets/icon.jpg')
+        icon: path.join(__dirname, '../../src/ui/assets/icon.png')
     });
     
     mainWindow.setMenu(null);
@@ -107,9 +116,11 @@ async function createWindow() {
     
     mainWindow.once('ready-to-show', () => {
         if (mainWindow) {
-            // Reposition while still invisible, then show
-            mainWindow.setPosition(x, y);
             mainWindow.show();
+            // Some window managers need a moment to settle before setPosition works
+            setTimeout(() => {
+                mainWindow?.setPosition(x, y);
+            }, 100);
         }
     });
 
@@ -139,7 +150,7 @@ async function createWindow() {
         }
     });
 
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    // mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
 
 function createTray() {

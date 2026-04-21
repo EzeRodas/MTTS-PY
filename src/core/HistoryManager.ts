@@ -13,7 +13,7 @@ export class HistoryManager {
         private audioService: AudioService,
         private settingsManager: ISettingsManager
     ) {
-        this.audioDir = path.join(process.cwd(), 'src', 'audio');
+        this.audioDir = path.join(settingsManager.getAppDirectory(), 'audio');
         this.historyPath = path.join(this.audioDir, 'history.json');
     }
 

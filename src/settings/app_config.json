@@ -5,5 +5,7 @@
   "monitoring": false,
   "monitoringDevice": "default",
   "monitoringVolume": 1,
-  "modelsPath": "/home/fible/.local/share/mtts-models"
+  "modelsPath": "/home/fible/.local/share/mtts-models",
+  "appShortcut": "CommandOrControl+Alt+M",
+  "defaultAppShortcut": "CommandOrControl+Alt+M"
 }

@@ -11,6 +11,7 @@ export interface AppConfig {
 }
 
 export interface ISettingsManager {
+    getAppDirectory(): string;
     getAppConfig(): Promise<AppConfig>;
     updateAppConfig(settings: Partial<AppConfig>): Promise<void>;
     

@@ -5,6 +5,7 @@ import * as fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import * as os from "node:os";
 import { KokoroTTS } from "kokoro-js";
+import { env } from "@huggingface/transformers";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import __cjs_mod__ from "node:module";
@@ -15,7 +16,7 @@ class SettingsManager {
   appConfigDir;
   appConfigPath;
   engineConfigDir;
-  getModelsDirectory() {
+  getAppDirectory() {
     const homeDir = os.homedir();
     const appName = "Moon-TTS";
     switch (process.platform) {
@@ -36,13 +37,14 @@ class SettingsManager {
     monitoring: false,
     monitoringDevice: null,
     monitoringVolume: 1,
-    modelsPath: this.getModelsDirectory(),
+    modelsPath: path.join(this.getAppDirectory(), "models"),
     appShortcut: "CommandOrControl+Alt+M",
     defaultAppShortcut: "CommandOrControl+Alt+M"
   };
   constructor() {
-    this.appConfigDir = path.join(process.cwd(), "src", "settings");
-    this.engineConfigDir = path.join(process.cwd(), "src", "infrastructure");
+    const baseDir = this.getAppDirectory();
+    this.appConfigDir = path.join(baseDir, "settings");
+    this.engineConfigDir = path.join(baseDir, "infrastructure");
     this.appConfigPath = path.join(this.appConfigDir, "app_config.json");
   }
   async ensureFileExists(filePath, defaultData, dir) {
@@ -94,6 +96,27 @@ class SettingsManager {
     const updatedSettings = { ...currentSettings, ...newSettings };
     await fs.writeFile(filePath, JSON.stringify(updatedSettings, null, 2), "utf-8");
   }
+}
+if (process.versions.electron) {
+  const homeDir = os.homedir();
+  const appName = "Moon-TTS";
+  let userDataPath = "";
+  switch (process.platform) {
+    case "win32":
+      userDataPath = path.join(process.env.APPDATA || path.join(homeDir, "AppData", "Roaming"), appName);
+      break;
+    case "darwin":
+      userDataPath = path.join(homeDir, "Library", "Application Support", appName);
+      break;
+    case "linux":
+    case "android":
+    default:
+      userDataPath = path.join(process.env.XDG_DATA_HOME || path.join(homeDir, ".local", "share"), appName);
+      break;
+  }
+  env.cacheDir = path.join(userDataPath, ".cache");
+  fs.mkdir(env.cacheDir, { recursive: true }).catch(() => {
+  });
 }
 class KokoroTTSProvider {
   ttsInstance = null;
@@ -166,7 +189,7 @@ class KokoroTTSProvider {
       await fs.unlink(tempFilePath);
     } catch (e) {
     }
-    const finalFilePath = path.join(process.cwd(), "src", "audio", "tts_output_0.wav");
+    const finalFilePath = path.join(this.settingsManager.getAppDirectory(), "audio", "tts_output_0.wav");
     await this.audioService.play(finalFilePath, appConfig.playback, appConfig.playbackDevice, appConfig.volume, appConfig.monitoring, appConfig.monitoringDevice, appConfig.monitoringVolume);
   }
 }
@@ -625,7 +648,7 @@ class HotkeyManager {
     this.ttsService = ttsService;
     this.audioService = audioService;
     this.settingsManager = settingsManager;
-    this.hotkeyedDir = path.join(process.cwd(), "src", "audio", "hotkeyed");
+    this.hotkeyedDir = path.join(settingsManager.getAppDirectory(), "audio", "hotkeyed");
     this.jsonPath = path.join(this.hotkeyedDir, "hotkeys.json");
   }
   ttsService;
@@ -771,7 +794,7 @@ class HistoryManager {
   constructor(audioService, settingsManager) {
     this.audioService = audioService;
     this.settingsManager = settingsManager;
-    this.audioDir = path.join(process.cwd(), "src", "audio");
+    this.audioDir = path.join(settingsManager.getAppDirectory(), "audio");
     this.historyPath = path.join(this.audioDir, "history.json");
   }
   audioService;
@@ -895,7 +918,14 @@ class HistoryManager {
     });
   }
 }
-app.disableHardwareAcceleration();
+if (process.platform !== "linux") {
+  app.disableHardwareAcceleration();
+}
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("ozone-platform-hint", "auto");
+  app.commandLine.appendSwitch("enable-features", "WaylandWindowDecorations");
+  app.commandLine.appendSwitch("enable-transparent-visuals");
+}
 const __filename$1 = fileURLToPath(import.meta.url);
 const __dirname$1 = path.dirname(__filename$1);
 let mainWindow = null;
@@ -908,6 +938,7 @@ async function loadElectronSettings() {
   if (existsSync(electronSettingsPath)) {
     try {
       const data = await fs.readFile(electronSettingsPath, "utf-8");
+      if (!data.trim()) return {};
       return JSON.parse(data);
     } catch (e) {
       console.error("Failed to load electron settings:", e);
@@ -967,7 +998,7 @@ async function createWindow() {
       nodeIntegration: false,
       sandbox: false
     },
-    icon: path.join(__dirname$1, "assets/icon.jpg")
+    icon: path.join(__dirname$1, "../../src/ui/assets/icon.png")
   });
   mainWindow.setMenu(null);
   if (process.env["ELECTRON_RENDERER_URL"]) {
@@ -977,8 +1008,10 @@ async function createWindow() {
   }
   mainWindow.once("ready-to-show", () => {
     if (mainWindow) {
-      mainWindow.setPosition(x, y);
       mainWindow.show();
+      setTimeout(() => {
+        mainWindow?.setPosition(x, y);
+      }, 100);
     }
   });
   mainWindow.on("hide", () => {
@@ -1004,7 +1037,6 @@ async function createWindow() {
       saveElectronSettings({ lastDisplayId: currentDisplay.id });
     }
   });
-  mainWindow.webContents.openDevTools({ mode: "detach" });
 }
 function createTray() {
   const iconPath = path.join(__dirname$1, "../../src/ui/assets/icon.png");

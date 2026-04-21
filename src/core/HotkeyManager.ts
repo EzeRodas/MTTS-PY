@@ -22,7 +22,7 @@ export class HotkeyManager {
         private audioService: AudioService,
         private settingsManager: ISettingsManager
     ) {
-        this.hotkeyedDir = path.join(process.cwd(), 'src', 'audio', 'hotkeyed');
+        this.hotkeyedDir = path.join(settingsManager.getAppDirectory(), 'audio', 'hotkeyed');
         this.jsonPath = path.join(this.hotkeyedDir, 'hotkeys.json');
     }
 
