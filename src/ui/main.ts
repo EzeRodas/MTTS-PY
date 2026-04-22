@@ -25,6 +25,16 @@ import { HistoryManager } from '../core/HistoryManager.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Fix for onnxruntime-node DLL loading on Windows
+if (process.platform === 'win32') {
+    const isPackaged = __dirname.includes('app.asar');
+    const basePath = isPackaged 
+        ? path.join(process.resourcesPath, 'app.asar.unpacked') 
+        : path.join(__dirname, '../../');
+    const onnxPath = path.join(basePath, 'node_modules', 'onnxruntime-node', 'bin', 'napi-v6', 'win32', 'x64');
+    process.env.PATH = `${onnxPath};${process.env.PATH || ''}`;
+}
+
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let appController: AppController;
