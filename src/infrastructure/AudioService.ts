@@ -43,13 +43,25 @@ export class AudioService {
             } catch (e) {}
         } else if (platform === 'win32') {
             try {
-                const { stdout } = await execPromise('powershell -NoProfile -Command "Get-PnpDevice -Class Media | Where-Object {$_.Present -eq $true} | Select-Object -Property FriendlyName, InstanceId | ConvertTo-Json"');
+                const { stdout } = await execPromise('powershell -NoProfile -Command "Get-PnpDevice -Class AudioEndpoint | Where-Object { $_.DeviceID -like \'*0.0.0.00000000*\' } | Select-Object -Property FriendlyName | ConvertTo-Json"');
                 if (stdout) {
                     const parsed = JSON.parse(stdout);
                     const items = Array.isArray(parsed) ? parsed : [parsed];
+                    
+                    // SDL deduplicates names by appending (2), (3), etc.
+                    const nameCounts = new Map<string, number>();
+                    
                     for (const item of items) {
-                        if (item && item.FriendlyName && item.InstanceId) {
-                            devices.push({ id: item.InstanceId, name: item.FriendlyName });
+                        if (item && item.FriendlyName) {
+                            let name = item.FriendlyName;
+                            const count = nameCounts.get(name) || 0;
+                            nameCounts.set(name, count + 1);
+                            
+                            if (count > 0) {
+                                name = `${name} (${count + 1})`;
+                            }
+                            
+                            devices.push({ id: name, name: name });
                         }
                     }
                 }
@@ -80,14 +92,14 @@ export class AudioService {
         const platform = os.platform();
         if (platform === 'darwin') {
             if (deviceId && deviceId !== 'default') {
-                // Using ffplay for targeted device playback via SDL AUDIODEV environment variable
-                return `AUDIODEV="${deviceId}" ffplay -nodisp -autoexit -volume ${Math.round(volume * 100)} "${filePath}"`;
+                // Using ffplay for targeted device playback via SDL_AUDIO_DEVICE_NAME environment variable
+                return `SDL_AUDIO_DEVICE_NAME="${deviceId}" ffplay -nodisp -autoexit -volume ${Math.round(volume * 100)} "${filePath}"`;
             }
             return `afplay -v ${volume} "${filePath}"`;
         } else if (platform === 'win32') {
             if (deviceId && deviceId !== 'default') {
                 // Using ffplay on Windows for targeted device playback
-                return `cmd /c "set AUDIODEV=${deviceId} && ffplay -nodisp -autoexit -volume ${Math.round(volume * 100)} \\"${filePath}\\""`;
+                return `set "SDL_AUDIO_DEVICE_NAME=${deviceId}" && ffplay -nodisp -autoexit -volume ${Math.round(volume * 100)} "${filePath}"`;
             }
             return `powershell -c (New-Object Media.SoundPlayer '${filePath}').PlaySync()`;
         } else if (platform === 'linux') {
