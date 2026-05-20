@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "docs-electron": {
+      "source": "imgly/agent-skills",
+      "sourceType": "github",
+      "computedHash": "181f7680aa5e9cb98987376369f3ccae0d28ab3c8672036ffbc18eff90d70c28"
+    },
+    "docs-js": {
+      "source": "imgly/agent-skills",
+      "sourceType": "github",
+      "computedHash": "501645f7cd2333f63839b5c91b5b5a5bea2f78663efca2cb3bf10e1f924304d1"
+    },
+    "docs-node": {
+      "source": "imgly/agent-skills",
+      "sourceType": "github",
+      "computedHash": "2ec8d38b4e4e65f69e0bde97036f61beb158ff54bac41da191d00692055d35c5"
+    }
+  }
+}

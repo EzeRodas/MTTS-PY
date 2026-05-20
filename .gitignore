@@ -4,3 +4,5 @@ out/
 release/
 .env
 *.log
+.agents
+.antigravitycli

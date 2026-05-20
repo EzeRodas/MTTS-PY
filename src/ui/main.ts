@@ -4,50 +4,41 @@ import { fileURLToPath } from 'node:url';
 import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
-// Disable hardware acceleration if GPU process crashes
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ============================================================================
+// SYSTEM GRAPHICS & DISPLAY WORKAROUNDS
+// ============================================================================
+// Disabling hardware acceleration on macOS/Windows prevents background rendering issues.
+// On Linux, appending ozone-platform wayland/transparent flags resolves transparency bugs
+// on modern compositors (e.g. Hyprland, Sway, GNOME Wayland).
 if (process.platform !== 'linux') {
     app.disableHardwareAcceleration();
 }
 
 if (process.platform === 'linux') {
-    app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
-    app.commandLine.appendSwitch('enable-features', 'WaylandWindowDecorations');
+    app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
     app.commandLine.appendSwitch('enable-transparent-visuals');
-}
-
-import { SettingsManager } from '../settings/SettingsManager.js';
-import { KokoroTTSProvider } from '../infrastructure/KokoroTTSProvider.js';
-import { AppController } from '../core/AppController.js';
-import { AudioService } from '../infrastructure/AudioService.js';
-import { HotkeyManager } from '../core/HotkeyManager.js';
-import { HistoryManager } from '../core/HistoryManager.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Fix for onnxruntime-node DLL loading on Windows
-if (process.platform === 'win32') {
-    const isPackaged = __dirname.includes('app.asar');
-    const basePath = isPackaged 
-        ? path.join(process.resourcesPath, 'app.asar.unpacked') 
-        : path.join(__dirname, '../../');
-    const onnxPath = path.join(basePath, 'node_modules', 'onnxruntime-node', 'bin', 'napi-v6', 'win32', 'x64');
-    process.env.PATH = `${onnxPath};${process.env.PATH || ''}`;
 }
 
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
-let appController: AppController;
+let appController: any;
 let tray: Tray | null = null;
 let isQuitting = false;
 
+/** Path to electron-specific persistent settings JSON file */
 const electronSettingsPath = path.join(app.getPath('userData'), 'electron-settings.json');
 
+/**
+ * Loads Electron UI specific preferences (like the last used screen monitor ID).
+ */
 async function loadElectronSettings() {
     if (existsSync(electronSettingsPath)) {
         try {
             const data = await fs.readFile(electronSettingsPath, 'utf-8');
-            if (!data.trim()) return {}; // Handle empty file
+            if (!data.trim()) return {}; 
             return JSON.parse(data);
         } catch (e) {
             console.error('Failed to load electron settings:', e);
@@ -56,6 +47,10 @@ async function loadElectronSettings() {
     return {};
 }
 
+/**
+ * Persists Electron UI configurations to disk.
+ * @param settings Partial settings object to merge.
+ */
 async function saveElectronSettings(settings: any) {
     try {
         const current = await loadElectronSettings();
@@ -66,9 +61,50 @@ async function saveElectronSettings(settings: any) {
     }
 }
 
+/**
+ * Dynamically boots up backend services and sets up IPC-renderer callbacks.
+ * Dynamic imports are used to defer loading heavy models and core frameworks
+ * until Electron is fully prepared, preventing startup locks.
+ */
 async function bootstrapBackend() {
+    // Dynamic imports to prevent early initialization crashes
+    const { SettingsManager } = await import('../settings/SettingsManager.js');
+    const { AudioService } = await import('../infrastructure/AudioService.js');
+    const { HistoryManager } = await import('../core/HistoryManager.js');
+    const { KokoroTTSProvider } = await import('../infrastructure/KokoroTTSProvider.js');
+    const { HotkeyManager } = await import('../core/HotkeyManager.js');
+    const { AppController } = await import('../core/AppController.js');
+
     const settingsManager = new SettingsManager();
     const audioService = new AudioService();
+    
+    // Reroute audio playback to Renderer via Buffer to avoid protocol/security issues.
+    // Reading wav files directly in Renderer over standard protocol (file:// or asar://)
+    // is blocked by Electron CSP and filesystem sandbox limitations.
+    audioService.setPlaybackHandler(async (data) => {
+        console.log('Main: Audio playback handler triggered for:', data.filePath);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                if (!existsSync(data.filePath)) {
+                    console.error('Main: Audio file does not exist:', data.filePath);
+                    return;
+                }
+                const buffer = await fs.readFile(data.filePath);
+                // Convert Node Buffer to standard Uint8Array for structured clone safety across IPC boundary
+                const uint8Array = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+                console.log(`Main: Sending play-audio IPC to renderer. Buffer size: ${uint8Array.length} bytes`);
+                mainWindow.webContents.send('play-audio', {
+                    ...data,
+                    audioBuffer: uint8Array
+                });
+            } catch (err) {
+                console.error('Main: Failed to read audio file for IPC:', err);
+            }
+        } else {
+            console.warn('Main: Cannot send play-audio IPC. mainWindow is null or destroyed.');
+        }
+    });
+
     const historyManager = new HistoryManager(audioService, settingsManager);
     const ttsProvider = new KokoroTTSProvider(settingsManager, audioService, historyManager);
     const hotkeyManager = new HotkeyManager(ttsProvider, audioService, settingsManager);
@@ -79,16 +115,19 @@ async function bootstrapBackend() {
     appController = new AppController(ttsProvider, settingsManager, audioService, hotkeyManager, historyManager);
 }
 
+/**
+ * Creates the main input bar application window.
+ * Positions it at the bottom-center of the screen.
+ */
 async function createWindow() {
     const settings = await loadElectronSettings();
     let targetDisplay = screen.getPrimaryDisplay();
 
+    // Re-focus on the screen the user last dragged or used the window on.
     if (settings.lastDisplayId) {
         const displays = screen.getAllDisplays();
         const foundDisplay = displays.find(d => d.id === settings.lastDisplayId);
-        if (foundDisplay) {
-            targetDisplay = foundDisplay;
-        }
+        if (foundDisplay) targetDisplay = foundDisplay;
     }
 
     const { x: workX, y: workY, width, height } = targetDisplay.workArea;
@@ -107,12 +146,14 @@ async function createWindow() {
         autoHideMenuBar: true,
         resizable: false,
         maximizable: false,
-        show: false, // Create hidden
+        show: false,
         webPreferences: {
             preload: path.join(__dirname, '../preload/preload.mjs'),
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: false
+            sandbox: false,
+            backgroundThrottling: false,
+            autoplayPolicy: 'no-user-gesture-required'
         },
         icon: path.join(__dirname, '../../src/ui/assets/icon.png')
     });
@@ -126,43 +167,43 @@ async function createWindow() {
     
     mainWindow.once('ready-to-show', () => {
         if (mainWindow) {
+            mainWindow.setPosition(x, y);
             mainWindow.show();
-            // Some window managers need a moment to settle before setPosition works
-            setTimeout(() => {
-                mainWindow?.setPosition(x, y);
-            }, 100);
+            // Staggered repositioning to reliably override window manager initial placement
+            setTimeout(() => mainWindow?.setPosition(x, y), 50);
+            setTimeout(() => mainWindow?.setPosition(x, y), 150);
+            setTimeout(() => mainWindow?.setPosition(x, y), 400);
         }
     });
 
     mainWindow.on('hide', () => {
-        if (settingsWindow && !settingsWindow.isDestroyed()) {
-            settingsWindow.hide();
-        }
+        // If main bar is hidden (via hotkey), auto-hide open settings window
+        if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.hide();
     });
 
     mainWindow.on('close', (event) => {
+        // Prevent close unless system tray explicitly sends quit commands,
+        // allowing the window to minimize/hide to the system tray.
         if (!isQuitting) {
             event.preventDefault();
             if (mainWindow) {
                 mainWindow.hide();
-                if (settingsWindow && !settingsWindow.isDestroyed()) {
-                    settingsWindow.hide();
-                }
+                if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.hide();
                 const currentDisplay = screen.getDisplayMatching(mainWindow.getBounds());
                 saveElectronSettings({ lastDisplayId: currentDisplay.id });
             }
             return;
         }
-
         if (mainWindow) {
             const currentDisplay = screen.getDisplayMatching(mainWindow.getBounds());
             saveElectronSettings({ lastDisplayId: currentDisplay.id });
         }
     });
-
-    // mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
 
+/**
+ * Configures the OS system tray icon and context menus.
+ */
 function createTray() {
     const iconPath = path.join(__dirname, '../../src/ui/assets/icon.png');
     tray = new Tray(iconPath);
@@ -172,11 +213,12 @@ function createTray() {
     ]);
     tray.setToolTip('Moon-TTS');
     tray.setContextMenu(contextMenu);
-    tray.on('click', () => {
-        mainWindow?.show();
-    });
+    tray.on('click', () => { mainWindow?.show(); });
 }
 
+/**
+ * Creates the secondary window displaying settings parameters.
+ */
 async function createSettingsWindow() {
     settingsWindow = new BrowserWindow({
         width: 400,
@@ -186,12 +228,13 @@ async function createSettingsWindow() {
         resizable: false,
         maximizable: false,
         autoHideMenuBar: true,
-        show: false, // Hidden by default
+        show: false,
         webPreferences: {
             preload: path.join(__dirname, '../preload/preload.mjs'),
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: false
+            sandbox: false,
+            autoplayPolicy: 'no-user-gesture-required'
         }
     });
 
@@ -203,26 +246,26 @@ async function createSettingsWindow() {
     }
 
     settingsWindow.on('close', (event) => {
+        // Intercept close to hide the window instead of destroying resources
         if (!isQuitting) {
-            event.preventDefault(); // Don't destroy window
-            if (settingsWindow) {
-                settingsWindow.hide();
-            }
+            event.preventDefault();
+            if (settingsWindow) settingsWindow.hide();
         }
     });
 }
 
+/**
+ * Binds global keyboard hotkeys to show/hide the main app bar on the screen.
+ * @param shortcut Keyboard combination accelerator.
+ */
 function registerAppShortcut(shortcut: string) {
     globalShortcut.unregisterAll();
     if (shortcut) {
         try {
             globalShortcut.register(shortcut, () => {
                 if (mainWindow) {
-                    if (mainWindow.isVisible()) {
-                        mainWindow.hide();
-                    } else {
-                        mainWindow.show();
-                    }
+                    if (mainWindow.isVisible()) mainWindow.hide();
+                    else mainWindow.show();
                 }
             });
         } catch (e) {
@@ -230,6 +273,10 @@ function registerAppShortcut(shortcut: string) {
         }
     }
 }
+
+// ============================================================================
+// MAIN LIFE CYCLE TRIGGERS
+// ============================================================================
 
 app.whenReady().then(async () => {
     await bootstrapBackend();
@@ -239,88 +286,56 @@ app.whenReady().then(async () => {
         registerAppShortcut(initialConfig.appShortcut);
     }
     
+    // Register IPC channels handlers
     ipcMain.handle('submit-text', async (event, text: string) => {
-        if (appController) {
-            // Passing text to the controller
-            await appController.processInput(text);
-        }
+        if (appController) await appController.processInput(text);
     });
 
-    ipcMain.handle('get-models', () => {
-        return appController ? appController.listModels() : [];
-    });
-
-    ipcMain.handle('get-active-model', () => {
-        return appController ? appController.getActiveModel() : null;
-    });
-
+    ipcMain.handle('get-models', () => appController ? appController.listModels() : []);
+    ipcMain.handle('get-active-model', () => appController ? appController.getActiveModel() : null);
     ipcMain.handle('set-model', (event, model: string) => {
-        if (appController) {
-            appController.setModel(model);
-        }
+        if (appController) appController.setModel(model);
     });
 
-    ipcMain.handle('get-voices', async () => {
-        return appController ? await appController.listVoices() : [];
-    });
-
-    ipcMain.handle('get-active-voice', async () => {
-        return appController ? await appController.getActiveVoice() : null;
-    });
-
+    ipcMain.handle('get-voices', async () => appController ? await appController.listVoices() : []);
+    ipcMain.handle('get-active-voice', async () => appController ? await appController.getActiveVoice() : null);
     ipcMain.handle('set-voice', async (event, voice: string) => {
-        if (appController) {
-            await appController.setVoice(voice);
-        }
+        if (appController) await appController.setVoice(voice);
     });
 
-    ipcMain.handle('get-app-config', async () => {
-        return appController ? await appController.getAppConfig() : null;
-    });
-
+    ipcMain.handle('get-app-config', async () => appController ? await appController.getAppConfig() : null);
     ipcMain.handle('update-app-config', async (event, config: any) => {
         if (appController) {
             await appController.updateAppConfig(config);
-            if (config.appShortcut !== undefined) {
-                registerAppShortcut(config.appShortcut);
-            }
+            if (config.appShortcut !== undefined) registerAppShortcut(config.appShortcut);
         }
     });
 
-    ipcMain.handle('get-devices', async () => {
-        return appController ? await appController.getDevices() : [];
-    });
-
-    ipcMain.on('close-app', () => {
-        if (mainWindow) {
-            mainWindow.close(); // Triggers the hide-to-tray logic
-        }
-    });
+    // Support both ipc handlers for robustness
+    ipcMain.handle('get-audio-devices', async () => appController ? await appController.getDevices() : []);
+    ipcMain.handle('get-devices', async () => appController ? await appController.getDevices() : []);
+    
+    ipcMain.on('close-app', () => { if (mainWindow) mainWindow.close(); });
 
     ipcMain.on('open-settings', (event, buttonBounds: { x: number, y: number, width: number, height: number }) => {
         if (!settingsWindow || !mainWindow) return;
-
+        
+        // Toggle settings if it is clicked again
         if (settingsWindow.isVisible()) {
             settingsWindow.hide();
             return;
         }
-
+        
+        // Position settings window directly on top of the settings gear button
         const mainBounds = mainWindow.getBounds();
         const settingsHeight = 500;
-        
-        // Aligned with left margin, extending upwards and to the right
         const x = mainBounds.x + Math.floor(buttonBounds.x);
         const y = mainBounds.y + Math.floor(buttonBounds.y) - settingsHeight - 16;
-
         settingsWindow.setPosition(x, y);
         settingsWindow.show();
     });
 
-    ipcMain.on('close-settings', () => {
-        if (settingsWindow) {
-            settingsWindow.hide();
-        }
-    });
+    ipcMain.on('close-settings', () => { if (settingsWindow) settingsWindow.hide(); });
 
     await createWindow();
     await createSettingsWindow();
@@ -335,9 +350,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
+    if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('will-quit', () => {

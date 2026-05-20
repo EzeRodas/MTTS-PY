@@ -3,13 +3,18 @@ import { ISettingsManager } from './interfaces/ISettingsManager.js';
 import { AudioService } from '../infrastructure/AudioService.js';
 import { HotkeyManager } from './HotkeyManager.js';
 import { HistoryManager } from './HistoryManager.js';
-import * as fs from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import * as path from 'node:path';
 
+/**
+ * Controller coordinating the core domain services of the TTS application.
+ * Acts as the entrypoint coordinator for inputs, command execution, settings adjustments,
+ * history lookups, and hotkey actions.
+ * Decouples the user interfaces (both CLI and Electron frontend) from underlying logic.
+ */
 export class AppController {
-    // We keep track of available models locally for now
+    /** List of supported synthesis engines. Extensible for future local/cloud providers. */
     private availableModels = ['kokoro'];
+    
+    /** The active TTS engine. */
     private activeModel = 'kokoro';
 
     constructor(
@@ -20,6 +25,11 @@ export class AppController {
         private historyManager: HistoryManager
     ) {}
 
+    /**
+     * Synthesizes and plays a text input stream.
+     * Delegates text synthesis directly to the active TTS provider.
+     * @param text The sentence/paragraph text.
+     */
     public async processInput(text: string): Promise<void> {
         try {
             await this.ttsService.speak(text);
@@ -28,6 +38,12 @@ export class AppController {
         }
     }
 
+    /**
+     * Parses and routes console/IPC commands starting with a slash (`/`).
+     * Supports commands such as /help, /voice, /model, /output, /volume, etc.
+     * @param commandLine Raw input command string containing parameters.
+     * @returns Promise resolving to true if the program loop should continue, or false to exit.
+     */
     public async handleCommand(commandLine: string): Promise<boolean> {
         const parts = commandLine.trim().split(' ');
         const command = parts[0].toLowerCase();
@@ -75,6 +91,9 @@ export class AppController {
         return true; // Signals to continue running
     }
 
+    /**
+     * Outputs help instructions and command usage guidelines to stdout.
+     */
     public showHelp(): void {
         console.log(`
 Available commands:
@@ -109,10 +128,17 @@ Available commands:
         `.trim());
     }
 
+    /**
+     * Lists registered model identifiers.
+     */
     public listModels(): string[] {
         return this.availableModels;
     }
 
+    /**
+     * Sets the active voice model.
+     * @param modelName Identifier of the model to select.
+     */
     public setModel(modelName: string): boolean {
         if (this.availableModels.includes(modelName)) {
             this.activeModel = modelName;
@@ -121,10 +147,16 @@ Available commands:
         return false;
     }
 
+    /**
+     * Gets the currently active model identifier.
+     */
     public getActiveModel(): string {
         return this.activeModel;
     }
 
+    /**
+     * Handles /model subcommands.
+     */
     private handleModelCommand(args: string[]): void {
         if (args.length === 0) {
             console.log('Usage: /model --list OR /model <model_name>');
@@ -143,32 +175,55 @@ Available commands:
         }
     }
 
+    /**
+     * Lists all voice options matching the current synthesis engine.
+     */
     public async listVoices(): Promise<string[]> {
         return await this.ttsService.getVoices();
     }
 
+    /**
+     * Retrieves the current voice identifier from engine configuration files.
+     */
     public async getActiveVoice(): Promise<string> {
         // Hardcoded to kokoro for now since it's the only engine
         const config = await this.settingsManager.getEngineConfig<{voiceId: string}>('kokoro', { voiceId: 'af_heart' });
         return config.voiceId;
     }
 
+    /**
+     * Sets a new active voice and persists changes.
+     * @param voiceName The identifier of the voice.
+     */
     public async setVoice(voiceName: string): Promise<void> {
         await this.ttsService.setVoice(voiceName);
     }
 
+    /**
+     * Returns the global application configuration object.
+     */
     public async getAppConfig() {
         return await this.settingsManager.getAppConfig();
     }
 
+    /**
+     * Patches the current global application configuration and triggers updates.
+     * @param config Partial configurations object.
+     */
     public async updateAppConfig(config: any) {
         return await this.settingsManager.updateAppConfig(config);
     }
 
+    /**
+     * Enumerates output audio devices available on the system.
+     */
     public async getDevices() {
         return await this.audioService.getDevices();
     }
 
+    /**
+     * Process Voice selection CLI command.
+     */
     private async handleVoiceCommand(args: string[]): Promise<void> {
         if (args.length === 0) {
             console.log('Usage: /voice --list OR /voice <voice_name>');
@@ -187,6 +242,10 @@ Available commands:
         }
     }
 
+    /**
+     * Process Output device selection CLI command.
+     * Translates index number or device ID string to app settings.
+     */
     private async handleOutputCommand(args: string[]): Promise<void> {
         if (args.length === 0) {
             console.log('Usage: /output --list OR /output <device_ID>');
@@ -223,6 +282,9 @@ Available commands:
         }
     }
 
+    /**
+     * Process Volume scaling CLI command.
+     */
     private async handleVolumeCommand(args: string[]): Promise<void> {
         if (args.length === 0) {
             console.log('Usage: /volume <0.0-1.0>');
@@ -238,6 +300,9 @@ Available commands:
         }
     }
 
+    /**
+     * Process Monitoring toggle CLI command.
+     */
     private async handleMonitoringCommand(args: string[]): Promise<void> {
         if (args.length === 0) {
             console.log('Usage: /monitoring <on|off>');
@@ -256,6 +321,9 @@ Available commands:
         }
     }
 
+    /**
+     * Process Monitoring target device selection CLI command.
+     */
     private async handleMonitoringOutputCommand(args: string[]): Promise<void> {
         if (args.length === 0) {
             console.log('Usage: /monitoring_output <device_ID> or /monitoring_output --list');
@@ -292,6 +360,9 @@ Available commands:
         await this.settingsManager.updateAppConfig({ monitoringDevice: selectedId });
     }
 
+    /**
+     * Process Monitoring volume CLI command.
+     */
     private async handleVolumeMonitoringCommand(args: string[]): Promise<void> {
         if (args.length === 0) {
             console.log('Usage: /volume_monitoring <0.0-1.0>');
@@ -307,6 +378,9 @@ Available commands:
         }
     }
 
+    /**
+     * Process History command and subcommands (list, clear, play, delete).
+     */
     private async handleHistoryCommand(args: string[]): Promise<void> {
         if (args.length > 0) {
             const subCommand = args[0].toLowerCase();
@@ -340,6 +414,9 @@ Available commands:
         await this.historyManager.printHistory();
     }
 
+    /**
+     * Process Hotkey commands (list, assign, delete, play, clear).
+     */
     private async handleHotkeyCommand(args: string[]): Promise<void> {
         if (args.length === 0) {
             console.log('Usage: /hotkey list OR /hotkey play <ID> OR /hotkey assign <hotkey> <text...>');
@@ -375,4 +452,5 @@ Available commands:
         }
     }
 }
+
 

@@ -8,8 +8,14 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-// Configure transformers to use a local disk path instead of inside app.asar
-// This is critical for packaged apps using onnxruntime-node.
+// ============================================================================
+// HUGGING FACE CACHE SYSTEM WORKAROUND FOR ELECTRON
+// ============================================================================
+// When running in an Electron package, the root execution directory is app.asar, 
+// which is a read-only virtual archive. If transformers attempts to write 
+// compiled model weight cache downloads to the default location inside the module folder,
+// it throws write permission exceptions.
+// Reroute caching directories explicitly to write-allowed user home directories.
 if (process.versions.electron) {
     const homeDir = os.homedir();
     const appName = 'Moon-TTS';
@@ -34,23 +40,38 @@ if (process.versions.electron) {
     fs.mkdir(env.cacheDir, { recursive: true }).catch(() => {});
 }
 
+/**
+ * Settings configuration structure specific to the Kokoro model provider.
+ */
 export interface KokoroConfig {
+    /** Active voice identifier (e.g., 'af_heart') */
     voiceId: string;
+    
+    /** Speech rate multiplier (e.g. 1.0) */
     speed: number;
+    
+    /** Model precision format */
     dtype: "fp32" | "fp16" | "q8" | "q4" | "q4f16";
 }
 
+/**
+ * Text-to-Speech service provider powered by the Kokoro 82M ONNX model.
+ * Handles the lazy-loading, caching, synthesis pipeline, and temporary file lifecycle.
+ */
 export class KokoroTTSProvider implements ITTSService {
+    /** Lazy-loaded singleton instance of the Kokoro ONNX neural network */
     private ttsInstance: KokoroTTS | null = null;
     private settingsManager: ISettingsManager;
     private audioService: AudioService;
     private historyManager: HistoryManager;
+    
+    /** HuggingFace Model Hub ID */
     private readonly modelId = "onnx-community/Kokoro-82M-v1.0-ONNX";
     
     private defaultKokoroConfig: KokoroConfig = {
         voiceId: 'af_heart',
         speed: 1.0,
-        dtype: 'fp32'
+        dtype: 'fp32' // Higher precision model selected for quality improvement over robotic outputs
     };
 
     constructor(settingsManager: ISettingsManager, audioService: AudioService, historyManager: HistoryManager) {
@@ -59,8 +80,12 @@ export class KokoroTTSProvider implements ITTSService {
         this.historyManager = historyManager;
     }
 
+    /**
+     * Lazy-loads the neural network model on the first request to speak.
+     * Prevents startup lagging in both the CLI and Electron window threads.
+     * Runs on CPU.
+     */
     private async getTTSInstance(): Promise<KokoroTTS> {
-        // Lazy-load the model on first request
         if (!this.ttsInstance) {
             console.log(`Loading Kokoro TTS model: ${this.modelId}`);
             
@@ -69,18 +94,25 @@ export class KokoroTTSProvider implements ITTSService {
             // Load via kokoro-js implementation
             this.ttsInstance = await KokoroTTS.from_pretrained(this.modelId, {
                 dtype: config.dtype,
-                device: "cpu", // Explicitly run on CPU
+                device: "cpu", // Explicitly run on CPU to avoid WebGPU environment initialization crashes in Node context
             });
             console.log('Kokoro TTS model loaded into memory and cached.');
         }
         return this.ttsInstance;
     }
 
+    /**
+     * Returns the array of voice models packaged inside the Kokoro model assets.
+     */
     public async getVoices(): Promise<string[]> {
         const tts = await this.getTTSInstance();
         return Object.keys(tts.voices);
     }
 
+    /**
+     * Swaps the active voice and updates engine config.
+     * @param voiceId The voice identifier.
+     */
     public async setVoice(voiceId: string): Promise<void> {
         const tts = await this.getTTSInstance();
         if (!tts.voices[voiceId as keyof typeof tts.voices]) {
@@ -90,6 +122,12 @@ export class KokoroTTSProvider implements ITTSService {
         console.log(`Voice set to: ${voiceId}`);
     }
 
+    /**
+     * Synthesizes audio and saves it straight to a file path.
+     * Primarily used by Hotkey pre-render bindings.
+     * @param text The sentence string.
+     * @param filePath Absolute path of the output file.
+     */
     public async generateToFile(text: string, filePath: string): Promise<void> {
         const tts = await this.getTTSInstance();
         const config = await this.settingsManager.getEngineConfig<KokoroConfig>('kokoro', this.defaultKokoroConfig);
@@ -106,6 +144,11 @@ export class KokoroTTSProvider implements ITTSService {
         console.log(`Saved audio file to: ${filePath}`);
     }
 
+    /**
+     * Synthesizes audio, registers the transaction in HistoryManager,
+     * and triggers playback routing.
+     * @param text The input sentence.
+     */
     public async speak(text: string): Promise<void> {
         const tts = await this.getTTSInstance();
         const config = await this.settingsManager.getEngineConfig<KokoroConfig>('kokoro', this.defaultKokoroConfig);
@@ -120,11 +163,11 @@ export class KokoroTTSProvider implements ITTSService {
             speed: config.speed
         });
 
-        // Save audio to temp file
+        // Save audio to temp file first
         const tempFilePath = path.join(os.tmpdir(), `tts_temp_${Date.now()}.wav`);
         await audio.save(tempFilePath);
 
-        // Hand over to HistoryManager
+        // Hand over to HistoryManager for rotation and persistence in history directory
         await this.historyManager.addEntry(text, tempFilePath);
         
         // Cleanup temp file
@@ -137,3 +180,4 @@ export class KokoroTTSProvider implements ITTSService {
         await this.audioService.play(finalFilePath, appConfig.playback, appConfig.playbackDevice, appConfig.volume, appConfig.monitoring, appConfig.monitoringDevice, appConfig.monitoringVolume);
     }
 }
+

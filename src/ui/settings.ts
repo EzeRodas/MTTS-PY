@@ -14,10 +14,12 @@ declare global {
             getAppConfig: () => Promise<any>;
             updateAppConfig: (config: any) => Promise<void>;
             getDevices: () => Promise<any[]>;
+            onPlayAudio: (callback: (data: any) => void) => void;
         };
     }
 }
 
+// Elements Cache
 const closeSettingsBtn = document.getElementById('closeSettingsBtn') as HTMLButtonElement;
 const modelSelector = document.getElementById('modelSelector') as HTMLSelectElement;
 const voiceSelector = document.getElementById('voiceSelector') as HTMLSelectElement;
@@ -36,8 +38,14 @@ if (closeSettingsBtn) {
     });
 }
 
+/**
+ * Loads models, voices, audio devices, and active configurations from IPC channels,
+ * and configures UI elements with current settings.
+ */
 async function loadSettings() {
-    // 1. Models and Voices
+    // ============================================================================
+    // 1. MODELS AND VOICES POPULATION
+    // ============================================================================
     if (modelSelector) {
         const models = await window.api.getModels();
         const activeModel = await window.api.getActiveModel();
@@ -74,11 +82,29 @@ async function loadSettings() {
         });
     }
 
-    // 2. App Config (Output & Monitoring)
+    // ============================================================================
+    // 2. AUDIO DEVICELIST & SETTINGS POPULATION
+    // ============================================================================
     const config = await window.api.getAppConfig();
-    const devices = await window.api.getDevices();
+    
+    let devices: any[] = [];
+    try {
+        // HACK: WebRTC APIs require initial permissions trigger to return full device labels 
+        // instead of empty arrays or anonymous placeholders. Calling getUserMedia temporarily
+        // grants browser-level permissions to inspect hardware labels.
+        try { await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) {}
+        
+        const mediaDevices = await navigator.mediaDevices.enumerateDevices();
+        devices = mediaDevices
+            .filter(d => d.kind === 'audiooutput')
+            .map(d => ({ id: d.deviceId || 'default', name: d.label || 'System Default' }));
+            
+        if (devices.length === 0) devices = [{ id: 'default', name: 'System Default' }];
+    } catch (e) {
+        devices = [{ id: 'default', name: 'System Default' }];
+    }
 
-    // Populate output devices
+    // Configure main speaker selector dropdown
     if (outputSelector) {
         outputSelector.innerHTML = '';
         devices.forEach(device => {
@@ -94,7 +120,7 @@ async function loadSettings() {
         });
     }
 
-    // Output Checkbox
+    // Configure main output checkbox toggle
     if (outputCheckbox) {
         outputCheckbox.checked = config.playback;
         outputCheckbox.addEventListener('change', async () => {
@@ -102,7 +128,7 @@ async function loadSettings() {
         });
     }
 
-    // Output Slider
+    // Configure main volume slider
     if (outputSlider) {
         outputSlider.value = String(config.volume * 100);
         outputSlider.addEventListener('input', async () => {
@@ -111,7 +137,7 @@ async function loadSettings() {
         });
     }
 
-    // Populate monitoring devices
+    // Configure secondary monitor selector dropdown
     if (monitoringSelector) {
         monitoringSelector.innerHTML = '';
         devices.forEach(device => {
@@ -127,7 +153,7 @@ async function loadSettings() {
         });
     }
 
-    // Monitoring Checkbox
+    // Configure secondary monitor checkbox toggle
     if (monitoringCheckbox) {
         monitoringCheckbox.checked = config.monitoring;
         monitoringCheckbox.addEventListener('change', async () => {
@@ -135,7 +161,7 @@ async function loadSettings() {
         });
     }
 
-    // Monitoring Slider
+    // Configure secondary monitor volume slider
     if (monitoringSlider) {
         monitoringSlider.value = String(config.monitoringVolume * 100);
         monitoringSlider.addEventListener('input', async () => {
@@ -145,4 +171,5 @@ async function loadSettings() {
     }
 }
 
+// Trigger load sequence
 loadSettings();

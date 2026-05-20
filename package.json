@@ -61,7 +61,6 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
-    "@img/sharp-win32-x64": "^0.34.5",
     "@tailwindcss/vite": "^4.2.2",
     "audic": "^3.0.2",
     "kokoro-js": "^1.2.1",
