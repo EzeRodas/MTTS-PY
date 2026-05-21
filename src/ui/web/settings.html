@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Settings</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="settings-container">
+        <div class="settings-header">
+            <h2>Quick settings</h2>
+            <button id="closeSettingsBtn" class="settings-close-btn">X</button>
+        </div>
+        <!-- Model and Voice -->
+        <div class="settings-section">
+            <div class="settings-row">
+                <h4>Model</h4>
+                <select id="modelSelector"></select>
+            </div>
+            <div class="settings-row">
+                <h4>Voice</h4>
+                <select id="voiceSelector"></select>
+            </div>
+        </div>
+        <!-- Output -->
+        <div class="settings-section">
+            <div class="settings-row">
+                <h4>Output</h4>
+                <label class="toggle-label">
+                    <input type="checkbox" class="toggle-input" id="outputCheckbox">
+                    <div class="toggle-track"></div>
+                    <span class="toggle-dot"></span>
+                </label>
+            </div>
+            <select id="outputSelector" class="full-width"></select>
+            <div class="volume-row">
+                <input id="outputSlider" type="range" value="50">
+                <img src="assets/volume.svg" alt="volume">
+            </div>
+        </div>
+        <!-- Monitoring -->
+        <div class="settings-section">
+            <div class="settings-row">
+                <h4>Monitoring</h4>
+                <label class="toggle-label">
+                    <input type="checkbox" class="toggle-input" id="monitoringCheckbox">
+                    <div class="toggle-track"></div>
+                    <span class="toggle-dot"></span>
+                </label>
+            </div>
+            <select id="monitoringSelector" class="full-width"></select>
+            <div class="volume-row">
+                <input id="monitoringSlider" type="range" value="50">
+                <img src="assets/volume.svg" alt="volume">
+            </div>
+        </div>
+    </div>
+
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script>
+        let api = null;
+        new QWebChannel(qt.webChannelTransport, function(channel) {
+            api = channel.objects.bridge;
+            loadSettings();
+        });
+
+        document.getElementById('closeSettingsBtn').addEventListener('click', () => {
+            if(api) api.closeSettings();
+        });
+
+        async function loadSettings() {
+            if (!api) return;
+
+            // Models
+            api.getModels(function(modelsJson) {
+                const models = JSON.parse(modelsJson);
+                const sel = document.getElementById('modelSelector');
+                sel.innerHTML = '';
+                api.getActiveModel(function(active) {
+                    models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m; opt.textContent = m;
+                        if (m === active) opt.selected = true;
+                        sel.appendChild(opt);
+                    });
+                });
+            });
+            sel_model = document.getElementById('modelSelector');
+            sel_model.addEventListener('change', () => { api.setModel(sel_model.value); });
+
+            // Voices
+            api.getVoices(function(voicesJson) {
+                const voices = JSON.parse(voicesJson);
+                const sel = document.getElementById('voiceSelector');
+                sel.innerHTML = '';
+                api.getActiveVoice(function(active) {
+                    voices.forEach(v => {
+                        const opt = document.createElement('option');
+                        opt.value = v; opt.textContent = v;
+                        if (v === active) opt.selected = true;
+                        sel.appendChild(opt);
+                    });
+                });
+            });
+            sel_voice = document.getElementById('voiceSelector');
+            sel_voice.addEventListener('change', () => { api.setVoice(sel_voice.value); });
+
+            // App config + devices
+            api.getAppConfig(function(configJson) {
+                const config = JSON.parse(configJson);
+
+                // Output checkbox
+                const outCb = document.getElementById('outputCheckbox');
+                outCb.checked = config.playback;
+                outCb.addEventListener('change', () => { api.updateAppConfig(JSON.stringify({playback: outCb.checked})); });
+
+                function updateSliderBackground(slider) {
+                    const val = slider.value;
+                    const min = slider.min || 0;
+                    const max = slider.max || 100;
+                    const percent = ((val - min) / (max - min)) * 100;
+                    slider.style.background = `linear-gradient(to right, #6366f1 0%, #6366f1 ${percent}%, #d4d4d4 ${percent}%, #d4d4d4 100%)`;
+                }
+
+                // Output volume
+                const outSlider = document.getElementById('outputSlider');
+                outSlider.value = String(config.volume * 100);
+                updateSliderBackground(outSlider);
+                outSlider.addEventListener('input', () => {
+                    updateSliderBackground(outSlider);
+                    api.updateAppConfig(JSON.stringify({volume: parseInt(outSlider.value) / 100}));
+                });
+
+                // Monitoring checkbox
+                const monCb = document.getElementById('monitoringCheckbox');
+                monCb.checked = config.monitoring;
+                monCb.addEventListener('change', () => { api.updateAppConfig(JSON.stringify({monitoring: monCb.checked})); });
+
+                // Monitoring volume
+                const monSlider = document.getElementById('monitoringSlider');
+                monSlider.value = String(config.monitoringVolume * 100);
+                updateSliderBackground(monSlider);
+                monSlider.addEventListener('input', () => {
+                    updateSliderBackground(monSlider);
+                    api.updateAppConfig(JSON.stringify({monitoringVolume: parseInt(monSlider.value) / 100}));
+                });
+
+                // Devices
+                api.getDevices(function(devicesJson) {
+                    const devices = JSON.parse(devicesJson);
+                    const outSel = document.getElementById('outputSelector');
+                    const monSel = document.getElementById('monitoringSelector');
+                    outSel.innerHTML = '';
+                    monSel.innerHTML = '';
+                    devices.forEach(d => {
+                        const opt1 = document.createElement('option');
+                        opt1.value = String(d.id); opt1.textContent = d.name;
+                        if (String(config.playbackDevice) === String(d.id)) opt1.selected = true;
+                        outSel.appendChild(opt1);
+
+                        const opt2 = document.createElement('option');
+                        opt2.value = String(d.id); opt2.textContent = d.name;
+                        if (String(config.monitoringDevice) === String(d.id)) opt2.selected = true;
+                        monSel.appendChild(opt2);
+                    });
+                    outSel.addEventListener('change', () => { api.updateAppConfig(JSON.stringify({playbackDevice: outSel.value})); });
+                    monSel.addEventListener('change', () => { api.updateAppConfig(JSON.stringify({monitoringDevice: monSel.value})); });
+                });
+            });
+        }
+    </script>
+</body>
+</html>

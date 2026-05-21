@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Moon-TTS</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="main-bar">
+        <a class="icon-link" draggable="false" href="#">
+            <img src="assets/icon.png" draggable="false" alt="mtts-icon">
+        </a>
+        <div id="dragArea" class="btn drag-handle">
+            <img src="assets/drag.svg" draggable="false" alt="drag">
+        </div>
+        <button id="settingsBtn" class="btn">
+            <img src="assets/settings.svg" draggable="false" alt="settings">
+        </button>
+        <input id="textArea" class="text-input" placeholder="Enter text to synthesize...">
+        <button id="submitBtn" class="btn">
+            <img src="assets/rocket.svg" draggable="false" alt="send">
+        </button>
+        <button id="closeBtn" class="close-btn">X</button>
+    </div>
+
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script>
+        let api = null;
+        new QWebChannel(qt.webChannelTransport, function(channel) {
+            api = channel.objects.bridge;
+        });
+
+        let isProcessing = false;
+
+        const submitBtn = document.getElementById('submitBtn');
+        const textArea = document.getElementById('textArea');
+        const closeBtn = document.getElementById('closeBtn');
+        const settingsBtn = document.getElementById('settingsBtn');
+
+        async function submitAction() {
+            if (isProcessing || !api) return;
+            const text = textArea.value.trim();
+            if (!text) return;
+            isProcessing = true;
+            submitBtn.disabled = true;
+            textArea.value = '';
+            try {
+                api.submitText(text);
+            } catch(e) {
+                console.error('Submit failed:', e);
+            } finally {
+                isProcessing = false;
+                submitBtn.disabled = false;
+                textArea.focus();
+            }
+        }
+
+        submitBtn.addEventListener('click', submitAction);
+        textArea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitAction();
+            }
+        });
+        closeBtn.addEventListener('click', () => { if(api) api.closeApp(); });
+        settingsBtn.addEventListener('click', () => {
+            if(api) {
+                const rect = settingsBtn.getBoundingClientRect();
+                api.openSettings(JSON.stringify({x: rect.x, y: rect.y, width: rect.width, height: rect.height}));
+            }
+        });
+
+        // Drag support via bridge
+        const dragArea = document.getElementById('dragArea');
+        let isDragging = false;
+        let dragStartX = 0, dragStartY = 0;
+        dragArea.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            dragStartX = e.screenX;
+            dragStartY = e.screenY;
+            if(api) api.startDrag(dragStartX, dragStartY);
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging || !api) return;
+            api.doDrag(e.screenX, e.screenY);
+        });
+        document.addEventListener('mouseup', () => { isDragging = false; });
+    </script>
+</body>
+</html>

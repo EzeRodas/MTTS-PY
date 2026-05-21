@@ -6,3 +6,6 @@ release/
 *.log
 .agents
 .antigravitycli
+Old/
+/src/models/*
+/src/ui/__pycache__
