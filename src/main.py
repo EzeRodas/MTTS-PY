@@ -94,7 +94,7 @@ def main():
     from src.core.settings_manager import SettingsManager
     from src.infrastructure.audio_service import AudioService
     from src.core.history_manager import HistoryManager
-    from src.infrastructure.kokoro_provider import KokoroTTSProvider
+    from src.infrastructure.kokoro import KokoroTTSProvider
     from src.core.hotkey_manager import HotkeyManager
     from src.core.app_controller import AppController
 

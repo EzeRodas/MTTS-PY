@@ -1,7 +1,7 @@
 """Kokoro TTS provider for Moon-TTS.
 
 Wraps the ``kokoro-onnx`` Python package to provide text-to-speech
-synthesis with automatic model downloading via ``huggingface_hub``.
+synthesis with automatic language resolution from voice prefixes.
 """
 
 from __future__ import annotations
@@ -15,8 +15,9 @@ from typing import Any
 import soundfile as sf
 from kokoro_onnx import Kokoro
 
-logger = logging.getLogger(__name__)
+from .language_map import get_language_for_voice
 
+logger = logging.getLogger(__name__)
 
 # Voices known to ship with Kokoro-82M-v1.0.
 _FALLBACK_VOICES: list[str] = [
@@ -31,11 +32,22 @@ _FALLBACK_VOICES: list[str] = [
     "bf_isabella",
     "bm_george",
     "bm_lewis",
+    "ef_dora",
+    "ff_siwis",
+    "jf_alpha",
+    "zf_xiaoxiao",
+    "if_sara",
+    "pf_dora",
+    "hf_alpha",
 ]
 
 
 class KokoroTTSProvider:
-    """Text-to-speech provider backed by Kokoro-82M via ONNX."""
+    """Text-to-speech provider backed by Kokoro-82M via ONNX.
+
+    Supports multilingual text-to-speech synthesis by mapping the selected
+    voice's prefix to the corresponding language code (e.g. 'ef_dora' -> 'es').
+    """
 
     MODEL_REPO_ID: str = "fastrtc/kokoro-onnx"
     MODEL_FILENAME: str = "kokoro-v1.0.onnx"
@@ -71,7 +83,6 @@ class KokoroTTSProvider:
             {
                 "voiceId": "af_heart",
                 "speed": 1.0,
-                "lang": "en-us",
             }
         )
 
@@ -107,8 +118,8 @@ class KokoroTTSProvider:
         search_paths.append(app_dir / "models" / "kokoro")
         search_paths.append(app_dir / "models")
         
-        # 3. Check project models folder
-        src_dir = Path(__file__).resolve().parent.parent
+        # 3. Check project models folder (relative to this file)
+        src_dir = Path(__file__).resolve().parent.parent.parent
         search_paths.append(src_dir / "models" / "kokoro")
         search_paths.append(src_dir.parent / "models")
         
@@ -190,16 +201,21 @@ class KokoroTTSProvider:
             {
                 "voiceId": "af_heart",
                 "speed": 1.0,
-                "lang": "en-us",
             }
         )
         self.kokoro_config = config
 
+        voice_id = config.get("voiceId", "af_heart")
+        speed = config.get("speed", 1.0)
+        # Determine language automatically from voice prefix
+        lang = get_language_for_voice(voice_id)
+
+        logger.info(f"Synthesizing text with voice='{voice_id}' (resolved lang='{lang}')")
         samples, sample_rate = tts.create(
             text,
-            voice=config["voiceId"],
-            speed=config["speed"],
-            lang=config.get("lang", "en-us"),
+            voice=voice_id,
+            speed=speed,
+            lang=lang,
         )
 
         # Write to a temporary WAV file.
@@ -253,16 +269,20 @@ class KokoroTTSProvider:
             {
                 "voiceId": "af_heart",
                 "speed": 1.0,
-                "lang": "en-us",
             }
         )
         self.kokoro_config = config
 
+        voice_id = config.get("voiceId", "af_heart")
+        speed = config.get("speed", 1.0)
+        # Determine language automatically from voice prefix
+        lang = get_language_for_voice(voice_id)
+
         samples, sample_rate = tts.create(
             text,
-            voice=config["voiceId"],
-            speed=config["speed"],
-            lang=config.get("lang", "en-us"),
+            voice=voice_id,
+            speed=speed,
+            lang=lang,
         )
 
         # Ensure parent directory exists.
