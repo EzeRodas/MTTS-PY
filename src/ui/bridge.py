@@ -27,6 +27,7 @@ class Bridge(QObject):
     drag_start_requested = Signal(int, int)  # screenX, screenY
     drag_move_requested = Signal(int, int)   # screenX, screenY
     app_shortcut_changed = Signal(str)       # New shortcut string
+    escape_pressed = Signal()
 
     def __init__(self, app_controller=None, parent=None):
         super().__init__(parent)
@@ -160,3 +161,9 @@ class Bridge(QObject):
     def doDrag(self, screen_x: int, screen_y: int):
         """Continue window drag to the given screen coordinates."""
         self.drag_move_requested.emit(screen_x, screen_y)
+
+    @Slot()
+    def escapePressed(self):
+        """Handle escape key press from the frontend to hide all windows."""
+        self.escape_pressed.emit()
+

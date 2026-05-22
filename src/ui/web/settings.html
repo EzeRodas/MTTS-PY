@@ -64,6 +64,13 @@
             loadSettings();
         });
 
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (api) api.escapePressed();
+                e.preventDefault();
+            }
+        });
+
         document.getElementById('closeSettingsBtn').addEventListener('click', () => {
             if(api) api.closeSettings();
         });

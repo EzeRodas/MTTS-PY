@@ -5,12 +5,13 @@ Uses QWebEngineView to render the HTML/CSS/JS frontend.
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QEvent
 from PySide6.QtWidgets import QMainWindow, QApplication
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebChannel import QWebChannel
 
 from .bridge import Bridge
+from .settings_window import ConsoleWebEnginePage
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class MainWindow(QMainWindow):
 
         # Web engine view
         self._web_view = QWebEngineView(self)
+        self._web_view.setPage(ConsoleWebEnginePage(self._web_view))
         self._web_view.setStyleSheet("background: transparent;")
         self._web_view.page().setBackgroundColor(Qt.GlobalColor.transparent)
         self.setCentralWidget(self._web_view)
@@ -99,3 +101,20 @@ class MainWindow(QMainWindow):
         else:
             event.ignore()
             self.hide()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._web_view.setFocus()
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.Type.ActivationChange:
+            if self.isActiveWindow():
+                self._web_view.setFocus()
+        super().changeEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self._bridge.escape_pressed.emit()
+            event.accept()
+        else:
+            super().keyPressEvent(event)

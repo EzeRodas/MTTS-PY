@@ -99,9 +99,29 @@ class AudioService:
             # Windows/macOS/other: Use sounddevice directly
             try:
                 all_devs = sd.query_devices()
+                try:
+                    host_apis = sd.query_hostapis()
+                except Exception:
+                    host_apis = []
+
+                is_windows = sys.platform.startswith("win")
+                has_wasapi = False
+                if is_windows:
+                    has_wasapi = any(api.get("name") == "Windows WASAPI" for api in host_apis)
+
                 for idx, dev in enumerate(all_devs):
                     if dev.get("max_output_channels", 0) > 0:  # type: ignore[union-attr]
-                        devices.append({"id": idx, "name": dev["name"]})  # type: ignore[index]
+                        api_idx = dev.get("hostapi", 0)
+                        api_name = ""
+                        if 0 <= api_idx < len(host_apis):
+                            api_name = host_apis[api_idx].get("name", "")
+
+                        # On Windows, filter out non-WASAPI devices to prevent duplicates and legacy name truncation
+                        if is_windows and has_wasapi and api_name != "Windows WASAPI":
+                            continue
+
+                        name = dev["name"]
+                        devices.append({"id": idx, "name": name})  # type: ignore[index]
             except Exception as e:
                 logger.error(f"Failed to query sounddevice: {e}")
 
@@ -206,6 +226,22 @@ class AudioService:
                     resolved_dev = int(device_id)
                 except (TypeError, ValueError):
                     resolved_dev = None
+
+            # Query target device native sample rate to avoid PaErrorCode -9997 (Invalid sample rate)
+            try:
+                dev_info = sd.query_devices(device=resolved_dev, kind="output")
+                target_sr = int(dev_info.get("default_samplerate", samplerate))
+            except Exception:
+                target_sr = samplerate
+
+            if target_sr != samplerate:
+                logger.info(f"Resampling audio from {samplerate}Hz to native device rate {target_sr}Hz")
+                duration = len(data) / samplerate
+                num_samples = int(duration * target_sr)
+                x_old = np.linspace(0, duration, len(data), endpoint=False)
+                x_new = np.linspace(0, duration, num_samples, endpoint=False)
+                data = np.interp(x_new, x_old, data)
+                samplerate = target_sr
 
             sd.play(data * volume, samplerate=samplerate, device=resolved_dev)
             sd.wait()

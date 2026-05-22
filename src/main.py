@@ -11,6 +11,12 @@ Single-instance desktop TTS application with:
 import sys
 sys.dont_write_bytecode = True
 import os
+
+# Add project root to sys.path to allow absolute imports when run directly
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import json
 import logging
 import signal
@@ -129,6 +135,13 @@ def main():
     bridge.open_settings_requested.connect(
         lambda bounds_json: settings_window.show_at(main_window, bounds_json)
     )
+
+    # Wire escape key press to hide all windows
+    def hide_all_windows():
+        main_window.hide()
+        settings_window.hide()
+
+    bridge.escape_pressed.connect(hide_all_windows)
 
     # -----------------------------------------------------------------
     # Global hotkey listener (Ctrl+Alt+M toggle)
