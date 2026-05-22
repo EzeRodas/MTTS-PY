@@ -9,6 +9,7 @@ Single-instance desktop TTS application with:
 - CLI toggle support (--show, --hide, --toggle)
 """
 import sys
+sys.dont_write_bytecode = True
 import os
 import json
 import logging
@@ -53,7 +54,7 @@ def send_command_to_running_instance(args: list[str]) -> bool:
         elif "--hide" in args:
             cmd = "hide"
         else:
-            cmd = "toggle"  # Default: toggle visibility
+            cmd = "show"  # Default: show window
 
         socket.write(cmd.encode("utf-8"))
         socket.flush()

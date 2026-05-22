@@ -93,12 +93,83 @@
                 const voices = JSON.parse(voicesJson);
                 const sel = document.getElementById('voiceSelector');
                 sel.innerHTML = '';
+
+                const langNames = {
+                    'a': 'American English',
+                    'b': 'British English',
+                    'e': 'Spanish',
+                    'f': 'French',
+                    'j': 'Japanese',
+                    'z': 'Mandarin Chinese',
+                    'i': 'Italian',
+                    'p': 'Portuguese',
+                    'h': 'Hindi'
+                };
+                const langOrder = ['a', 'b', 'e', 'f', 'j', 'z', 'i', 'p', 'h'];
+
                 api.getActiveVoice(function(active) {
-                    voices.forEach(v => {
+                    const parsed = voices.map(v => {
+                        if (v.length < 3 || v[2] !== '_') {
+                            return { id: v, name: v, gender: 'Other', lang: 'Other', genderKey: 'other', langKey: 'other' };
+                        }
+                        const gKey = v[1].toLowerCase();
+                        const lKey = v[0].toLowerCase();
+                        const gender = gKey === 'f' ? 'Female' : (gKey === 'm' ? 'Male' : 'Other');
+                        const lang = langNames[lKey] || 'Other';
+                        const namePart = v.slice(3);
+                        const name = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+                        return {
+                            id: v,
+                            name: name,
+                            gender: gender,
+                            lang: lang,
+                            genderKey: gKey,
+                            langKey: lKey
+                        };
+                    });
+
+                    // Sort: Female groups first, then Male, then Other; then language order; then voice name
+                    parsed.sort((x, y) => {
+                        const gOrder = { 'f': 0, 'm': 1, 'other': 2 };
+                        const gx = gOrder[x.genderKey] !== undefined ? gOrder[x.genderKey] : 2;
+                        const gy = gOrder[y.genderKey] !== undefined ? gOrder[y.genderKey] : 2;
+                        if (gx !== gy) return gx - gy;
+
+                        const lx = langOrder.indexOf(x.langKey);
+                        const ly = langOrder.indexOf(y.langKey);
+                        const lxIndex = lx !== -1 ? lx : 999;
+                        const lyIndex = ly !== -1 ? ly : 999;
+                        if (lxIndex !== lyIndex) return lxIndex - lyIndex;
+
+                        return x.name.localeCompare(y.name);
+                    });
+
+                    let currentGender = null;
+                    let currentGenderEl = null;
+                    let currentLang = null;
+
+                    parsed.forEach(v => {
+                        if (v.gender !== currentGender) {
+                            currentGender = v.gender;
+                            currentGenderEl = document.createElement('optgroup');
+                            currentGenderEl.label = currentGender;
+                            sel.appendChild(currentGenderEl);
+                            currentLang = null;
+                        }
+
+                        if (v.lang !== currentLang) {
+                            currentLang = v.lang;
+                            const divOpt = document.createElement('option');
+                            divOpt.disabled = true;
+                            divOpt.textContent = `── ${currentLang} ──`;
+                            currentGenderEl.appendChild(divOpt);
+                        }
+
                         const opt = document.createElement('option');
-                        opt.value = v; opt.textContent = v;
-                        if (v === active) opt.selected = true;
-                        sel.appendChild(opt);
+                        opt.value = v.id;
+                        opt.textContent = v.name;
+                        if (v.id === active) opt.selected = true;
+                        currentGenderEl.appendChild(opt);
                     });
                 });
             });

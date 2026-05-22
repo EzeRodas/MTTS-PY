@@ -33,6 +33,9 @@ body { margin: 16px; }
 .settings-row h4 { font-weight: 700; }
 select { background: white; border-radius: 8px; width: 192px; outline: 1px solid #d1d5db; border: none; padding: 4px 8px; font-family: 'Nunito', sans-serif; font-size: 1rem;}
 select.full-width { width: 100%; margin-bottom: 12px; }
+optgroup { font-weight: 700; color: #4f46e5; background: white; font-style: normal; }
+option { font-weight: 400; color: #333; background: white; }
+option[disabled] { color: #444; font-weight: 700; text-align: center; font-size: 0.85rem; background: #f9fafb; }
 
 /* Toggle switch */
 .toggle-label { position: relative; display: inline-flex; align-items: center; cursor: pointer; gap: 12px; }

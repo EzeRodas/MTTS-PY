@@ -165,7 +165,8 @@ class KokoroTTSProvider:
         try:
             tts = self._get_tts_instance()
             return list(tts.get_voices())
-        except Exception:
+        except Exception as e:
+            logger.exception("Failed to load/initialize TTS engine:")
             return list(_FALLBACK_VOICES)
 
     def set_voice(self, voice_id: str) -> None:

@@ -1,4 +1,4 @@
-node_modules/
+.venv/
 dist/
 out/
 release/
@@ -8,4 +8,7 @@ release/
 .antigravitycli
 Old/
 /src/models/*
-/src/ui/__pycache__
+__pycache__/
+scratch/
+build/
+AppDir/
