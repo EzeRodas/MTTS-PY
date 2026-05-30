@@ -135,6 +135,7 @@ def main():
     bridge.open_settings_requested.connect(
         lambda bounds_json: settings_window.show_at(main_window, bounds_json)
     )
+    bridge.expand_settings_requested.connect(settings_window.set_expanded)
 
     # Wire escape key press to hide all windows
     def hide_all_windows():

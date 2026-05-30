@@ -6,11 +6,33 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="settings-container">
-        <div class="settings-header">
-            <h2>Quick settings</h2>
-            <button id="closeSettingsBtn" class="settings-close-btn">X</button>
-        </div>
+    <div class="main-layout">
+        <div class="settings-container" id="quickSettings">
+            <div class="settings-header">
+                <h2>Quick settings</h2>
+                <div class="header-buttons">
+                    <button id="expandSettingsBtn" class="settings-expand-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="settings-expand-btn">
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                            <path d="M16 4l4 0l0 4" />
+                            <path d="M14 10l6 -6" />
+                            <path d="M8 20l-4 0l0 -4" />
+                            <path d="M4 20l6 -6" />
+                            <path d="M16 20l4 0l0 -4" />
+                            <path d="M14 14l6 6" />
+                            <path d="M8 4l-4 0l0 4" />
+                            <path d="M4 4l6 6" />
+                        </svg>
+                    </button>
+                    <button id="closeSettingsBtn" class="settings-close-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-x">
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                            <path d="M18 6l-12 12" />
+                            <path d="M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
         <!-- Model and Voice -->
         <div class="settings-section">
             <div class="settings-row">
@@ -54,198 +76,15 @@
                 <img src="assets/volume.svg" alt="volume">
             </div>
         </div>
+        </div>
+        <div class="advanced-panel" id="advancedPanel">
+            <iframe id="advancedFrame" src="about:blank"></iframe>
+        </div>
     </div>
 
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-    <script>
-        let api = null;
-        new QWebChannel(qt.webChannelTransport, function(channel) {
-            api = channel.objects.bridge;
-            loadSettings();
-        });
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                if (api) api.escapePressed();
-                e.preventDefault();
-            }
-        });
-
-        document.getElementById('closeSettingsBtn').addEventListener('click', () => {
-            if(api) api.closeSettings();
-        });
-
-        async function loadSettings() {
-            if (!api) return;
-
-            // Models
-            api.getModels(function(modelsJson) {
-                const models = JSON.parse(modelsJson);
-                const sel = document.getElementById('modelSelector');
-                sel.innerHTML = '';
-                api.getActiveModel(function(active) {
-                    models.forEach(m => {
-                        const opt = document.createElement('option');
-                        opt.value = m; opt.textContent = m;
-                        if (m === active) opt.selected = true;
-                        sel.appendChild(opt);
-                    });
-                });
-            });
-            sel_model = document.getElementById('modelSelector');
-            sel_model.addEventListener('change', () => { api.setModel(sel_model.value); });
-
-            // Voices
-            api.getVoices(function(voicesJson) {
-                const voices = JSON.parse(voicesJson);
-                const sel = document.getElementById('voiceSelector');
-                sel.innerHTML = '';
-
-                const langNames = {
-                    'a': 'American English',
-                    'b': 'British English',
-                    'e': 'Spanish',
-                    'f': 'French',
-                    'j': 'Japanese',
-                    'z': 'Mandarin Chinese',
-                    'i': 'Italian',
-                    'p': 'Portuguese',
-                    'h': 'Hindi'
-                };
-                const langOrder = ['a', 'b', 'e', 'f', 'j', 'z', 'i', 'p', 'h'];
-
-                api.getActiveVoice(function(active) {
-                    const parsed = voices.map(v => {
-                        if (v.length < 3 || v[2] !== '_') {
-                            return { id: v, name: v, gender: 'Other', lang: 'Other', genderKey: 'other', langKey: 'other' };
-                        }
-                        const gKey = v[1].toLowerCase();
-                        const lKey = v[0].toLowerCase();
-                        const gender = gKey === 'f' ? 'Female' : (gKey === 'm' ? 'Male' : 'Other');
-                        const lang = langNames[lKey] || 'Other';
-                        const namePart = v.slice(3);
-                        const name = namePart.charAt(0).toUpperCase() + namePart.slice(1);
-                        return {
-                            id: v,
-                            name: name,
-                            gender: gender,
-                            lang: lang,
-                            genderKey: gKey,
-                            langKey: lKey
-                        };
-                    });
-
-                    // Sort: Female groups first, then Male, then Other; then language order; then voice name
-                    parsed.sort((x, y) => {
-                        const gOrder = { 'f': 0, 'm': 1, 'other': 2 };
-                        const gx = gOrder[x.genderKey] !== undefined ? gOrder[x.genderKey] : 2;
-                        const gy = gOrder[y.genderKey] !== undefined ? gOrder[y.genderKey] : 2;
-                        if (gx !== gy) return gx - gy;
-
-                        const lx = langOrder.indexOf(x.langKey);
-                        const ly = langOrder.indexOf(y.langKey);
-                        const lxIndex = lx !== -1 ? lx : 999;
-                        const lyIndex = ly !== -1 ? ly : 999;
-                        if (lxIndex !== lyIndex) return lxIndex - lyIndex;
-
-                        return x.name.localeCompare(y.name);
-                    });
-
-                    let currentGender = null;
-                    let currentGenderEl = null;
-                    let currentLang = null;
-
-                    parsed.forEach(v => {
-                        if (v.gender !== currentGender) {
-                            currentGender = v.gender;
-                            currentGenderEl = document.createElement('optgroup');
-                            currentGenderEl.label = currentGender;
-                            sel.appendChild(currentGenderEl);
-                            currentLang = null;
-                        }
-
-                        if (v.lang !== currentLang) {
-                            currentLang = v.lang;
-                            const divOpt = document.createElement('option');
-                            divOpt.disabled = true;
-                            divOpt.textContent = `── ${currentLang} ──`;
-                            currentGenderEl.appendChild(divOpt);
-                        }
-
-                        const opt = document.createElement('option');
-                        opt.value = v.id;
-                        opt.textContent = v.name;
-                        if (v.id === active) opt.selected = true;
-                        currentGenderEl.appendChild(opt);
-                    });
-                });
-            });
-            sel_voice = document.getElementById('voiceSelector');
-            sel_voice.addEventListener('change', () => { api.setVoice(sel_voice.value); });
-
-            // App config + devices
-            api.getAppConfig(function(configJson) {
-                const config = JSON.parse(configJson);
-
-                // Output checkbox
-                const outCb = document.getElementById('outputCheckbox');
-                outCb.checked = config.playback;
-                outCb.addEventListener('change', () => { api.updateAppConfig(JSON.stringify({playback: outCb.checked})); });
-
-                function updateSliderBackground(slider) {
-                    const val = slider.value;
-                    const min = slider.min || 0;
-                    const max = slider.max || 100;
-                    const percent = ((val - min) / (max - min)) * 100;
-                    slider.style.background = `linear-gradient(to right, #6366f1 0%, #6366f1 ${percent}%, #d4d4d4 ${percent}%, #d4d4d4 100%)`;
-                }
-
-                // Output volume
-                const outSlider = document.getElementById('outputSlider');
-                outSlider.value = String(config.volume * 100);
-                updateSliderBackground(outSlider);
-                outSlider.addEventListener('input', () => {
-                    updateSliderBackground(outSlider);
-                    api.updateAppConfig(JSON.stringify({volume: parseInt(outSlider.value) / 100}));
-                });
-
-                // Monitoring checkbox
-                const monCb = document.getElementById('monitoringCheckbox');
-                monCb.checked = config.monitoring;
-                monCb.addEventListener('change', () => { api.updateAppConfig(JSON.stringify({monitoring: monCb.checked})); });
-
-                // Monitoring volume
-                const monSlider = document.getElementById('monitoringSlider');
-                monSlider.value = String(config.monitoringVolume * 100);
-                updateSliderBackground(monSlider);
-                monSlider.addEventListener('input', () => {
-                    updateSliderBackground(monSlider);
-                    api.updateAppConfig(JSON.stringify({monitoringVolume: parseInt(monSlider.value) / 100}));
-                });
-
-                // Devices
-                api.getDevices(function(devicesJson) {
-                    const devices = JSON.parse(devicesJson);
-                    const outSel = document.getElementById('outputSelector');
-                    const monSel = document.getElementById('monitoringSelector');
-                    outSel.innerHTML = '';
-                    monSel.innerHTML = '';
-                    devices.forEach(d => {
-                        const opt1 = document.createElement('option');
-                        opt1.value = String(d.id); opt1.textContent = d.name;
-                        if (String(config.playbackDevice) === String(d.id)) opt1.selected = true;
-                        outSel.appendChild(opt1);
-
-                        const opt2 = document.createElement('option');
-                        opt2.value = String(d.id); opt2.textContent = d.name;
-                        if (String(config.monitoringDevice) === String(d.id)) opt2.selected = true;
-                        monSel.appendChild(opt2);
-                    });
-                    outSel.addEventListener('change', () => { api.updateAppConfig(JSON.stringify({playbackDevice: outSel.value})); });
-                    monSel.addEventListener('change', () => { api.updateAppConfig(JSON.stringify({monitoringDevice: monSel.value})); });
-                });
-            });
-        }
-    </script>
+    <script src="scripts/bridge_init.js"></script>
+    <script src="scripts/settings/settings_loader.js"></script>
+    <script src="scripts/settings/settings_window.js"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@
 </head>
 <body>
     <div class="main-bar">
-        <a class="icon-link" draggable="false" href="#">
+        <a class="icon-link" draggable="false" title="About" target="_blank" href="https://github.com/EzeRodas/MTTS-PY" id="About">
             <img src="assets/icon.png" draggable="false" alt="mtts-icon">
         </a>
         <div id="dragArea" class="btn drag-handle">
@@ -24,122 +24,10 @@
     </div>
 
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-    <script>
-        let api = null;
-        let appShortcut = "Ctrl+Alt+M"; // default fallback
-
-        function isShortcutPressed(e, shortcutStr) {
-            if (!shortcutStr) return false;
-            const parts = shortcutStr.split('+').map(p => p.trim().toLowerCase());
-            const hasCtrl = parts.includes('ctrl');
-            const hasAlt = parts.includes('alt');
-            const hasShift = parts.includes('shift');
-            const hasMeta = parts.includes('meta') || parts.includes('win') || parts.includes('cmd');
-            
-            const keyPart = parts.find(p => !['ctrl', 'alt', 'shift', 'meta', 'win', 'cmd'].includes(p));
-            if (!keyPart) return false;
-            
-            const matchCtrl = e.ctrlKey === hasCtrl;
-            const matchAlt = e.altKey === hasAlt;
-            const matchShift = e.shiftKey === hasShift;
-            const matchMeta = e.metaKey === hasMeta;
-            
-            const matchKey = e.key.toLowerCase() === keyPart;
-            
-            return matchCtrl && matchAlt && matchShift && matchMeta && matchKey;
-        }
-
-        new QWebChannel(qt.webChannelTransport, function(channel) {
-            api = channel.objects.bridge;
-            
-            // Get initial shortcut configuration
-            api.getAppConfig(function(configJson) {
-                try {
-                    const config = JSON.parse(configJson);
-                    if (config.appShortcut) {
-                        appShortcut = config.appShortcut;
-                    }
-                } catch(err) {
-                    console.error('Failed to parse app config:', err);
-                }
-            });
-
-            // Connect signal for shortcut changes
-            api.app_shortcut_changed.connect(function(newShortcut) {
-                appShortcut = newShortcut;
-            });
-        });
-
-        // Global key event handler
-        document.addEventListener('keydown', (e) => {
-            // Escape key hides all windows
-            if (e.key === 'Escape') {
-                if (api) api.escapePressed();
-                e.preventDefault();
-                return;
-            }
-
-            // Prevent default behavior for the registered global toggle shortcut so it doesn't type into text fields
-            if (isShortcutPressed(e, appShortcut)) {
-                e.preventDefault();
-            }
-        });
-
-        let isProcessing = false;
-
-        const submitBtn = document.getElementById('submitBtn');
-        const textArea = document.getElementById('textArea');
-        const closeBtn = document.getElementById('closeBtn');
-        const settingsBtn = document.getElementById('settingsBtn');
-
-        async function submitAction() {
-            if (isProcessing || !api) return;
-            const text = textArea.value.trim();
-            if (!text) return;
-            isProcessing = true;
-            submitBtn.disabled = true;
-            textArea.value = '';
-            try {
-                api.submitText(text);
-            } catch(e) {
-                console.error('Submit failed:', e);
-            } finally {
-                isProcessing = false;
-                submitBtn.disabled = false;
-                textArea.focus();
-            }
-        }
-
-        submitBtn.addEventListener('click', submitAction);
-        textArea.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                submitAction();
-            }
-        });
-        closeBtn.addEventListener('click', () => { if(api) api.closeApp(); });
-        settingsBtn.addEventListener('click', () => {
-            if(api) {
-                const rect = settingsBtn.getBoundingClientRect();
-                api.openSettings(JSON.stringify({x: rect.x, y: rect.y, width: rect.width, height: rect.height}));
-            }
-        });
-
-        // Drag support via bridge
-        const dragArea = document.getElementById('dragArea');
-        let isDragging = false;
-        let dragStartX = 0, dragStartY = 0;
-        dragArea.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            dragStartX = e.screenX;
-            dragStartY = e.screenY;
-            if(api) api.startDrag(dragStartX, dragStartY);
-        });
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging || !api) return;
-            api.doDrag(e.screenX, e.screenY);
-        });
-        document.addEventListener('mouseup', () => { isDragging = false; });
-    </script>
+    <script src="scripts/bridge_init.js"></script>
+    <script src="scripts/main/shortcut_handler.js"></script>
+    <script src="scripts/main/synthesis_handler.js"></script>
+    <script src="scripts/main/window_drag.js"></script>
+    <script src="scripts/main/main_control.js"></script>
 </body>
 </html>

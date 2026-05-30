@@ -29,6 +29,12 @@ class AudioService:
     # Device enumeration
     # ------------------------------------------------------------------
 
+    _cached_devices: list[dict[str, Any]] = [
+        {"id": "default", "name": "System Default"},
+    ]
+    _is_querying: bool = False
+    _lock = threading.Lock()
+
     @staticmethod
     def get_devices() -> list[dict[str, Any]]:
         """Return a list of available output audio devices.
@@ -37,6 +43,26 @@ class AudioService:
             * ``id``   – string or integer device identifier.
             * ``name`` – human-readable device name.
         """
+        with AudioService._lock:
+            if not AudioService._is_querying:
+                AudioService._is_querying = True
+                threading.Thread(target=AudioService._query_devices_background, daemon=True).start()
+            return list(AudioService._cached_devices)
+
+    @staticmethod
+    def _query_devices_background() -> None:
+        try:
+            devices = AudioService._perform_query()
+            with AudioService._lock:
+                AudioService._cached_devices = devices
+        except Exception as e:
+            logger.error(f"Error in background device query: {e}")
+        finally:
+            with AudioService._lock:
+                AudioService._is_querying = False
+
+    @staticmethod
+    def _perform_query() -> list[dict[str, Any]]:
         devices: list[dict[str, Any]] = [
             {"id": "default", "name": "System Default"},
         ]
@@ -227,13 +253,17 @@ class AudioService:
                 except (TypeError, ValueError):
                     resolved_dev = None
 
-            # Query target device native sample rate to avoid PaErrorCode -9997 (Invalid sample rate)
+            # Query target device info
+            target_sr = samplerate
+            max_channels = 1
             try:
                 dev_info = sd.query_devices(device=resolved_dev, kind="output")
                 target_sr = int(dev_info.get("default_samplerate", samplerate))
-            except Exception:
-                target_sr = samplerate
+                max_channels = int(dev_info.get("max_output_channels", 1))
+            except Exception as e:
+                logger.debug(f"Could not query device info: {e}")
 
+            # Resample mono audio if necessary
             if target_sr != samplerate:
                 logger.info(f"Resampling audio from {samplerate}Hz to native device rate {target_sr}Hz")
                 duration = len(data) / samplerate
@@ -243,7 +273,13 @@ class AudioService:
                 data = np.interp(x_new, x_old, data)
                 samplerate = target_sr
 
-            sd.play(data * volume, samplerate=samplerate, device=resolved_dev)
+            # Convert mono to stereo if device supports/requires multi-channel output
+            if len(data.shape) == 1 and max_channels >= 2:
+                logger.debug("Converting mono stream to stereo for device compatibility.")
+                data = np.column_stack((data, data))
+
+            # Play with higher latency settings for stability on virtual cables/WASAPI
+            sd.play(data * volume, samplerate=samplerate, device=resolved_dev, latency="high")
             sd.wait()
         except Exception as e:
             logger.error(f"sounddevice playback failed: {e}")

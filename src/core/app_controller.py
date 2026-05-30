@@ -40,15 +40,21 @@ class AppController:
 
     def list_models(self) -> list[str]:
         """Return available TTS engine identifiers."""
-        return self._available_models
+        models = []
+        if hasattr(self._tts_service, "is_available") and self._tts_service.is_available():
+            models.append("kokoro")
+        return models
 
     def get_active_model(self) -> str:
-        """Return the currently selected model name."""
-        return self._active_model
+        """Return the currently selected model name if available, else empty string."""
+        active = self._active_model
+        if active in self.list_models():
+            return active
+        return ""
 
     def set_model(self, model_name: str) -> bool:
         """Set the active model if it exists."""
-        if model_name in self._available_models:
+        if model_name in self.list_models():
             self._active_model = model_name
             return True
         return False
@@ -79,6 +85,23 @@ class AppController:
             self._tts_service.set_voice(voice_id)
         except Exception as e:
             logger.error(f"Failed to set voice: {e}")
+
+    def get_speed(self) -> float:
+        """Return the synthesis speed from Kokoro configuration."""
+        try:
+            config = self._settings_manager.get_engine_config("kokoro", {"speed": 1.0})
+            return float(config.get("speed", 1.0))
+        except Exception:
+            return 1.0
+
+    def set_speed(self, speed: float) -> None:
+        """Set the synthesis speed in Kokoro configuration."""
+        try:
+            self._settings_manager.update_engine_config("kokoro", {"speed": speed})
+            if hasattr(self._tts_service, "kokoro_config"):
+                self._tts_service.kokoro_config["speed"] = speed
+        except Exception as e:
+            logger.error(f"Failed to set speed: {e}")
 
     # =========================================================================
     # Settings

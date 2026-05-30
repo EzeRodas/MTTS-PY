@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Advanced Settings</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="advanced-body">
+    <div class="adv-container">
+        <!-- Navigation -->
+        <div class="adv-nav">
+            <button class="nav-item active" onclick="switchTab('general', this)">General</button>
+            <button class="nav-item" onclick="switchTab('audio', this)">Audio</button>
+            <button class="nav-item" onclick="switchTab('engine', this)">TTS Engine</button>
+            <button class="nav-item" onclick="switchTab('hotkeys', this)">Hotkeys</button>
+            <button class="nav-item" onclick="switchTab('history', this)">History</button>
+            <div class="flex-spacer"></div>
+            <button class="nav-item nav-item-back" id="backToQuickBtn">< Quick Settings</button>
+            <button class="nav-item nav-item-close" id="closeSettingsBtn">Close</button>
+        </div>
+
+        <!-- Content -->
+        <div class="adv-content">
+            <!-- General Tab -->
+            <div id="general" class="category-panel active">
+                <div>
+                    <h2>General Settings</h2>
+                    <div class="panel-description">Configure application behavior and startup display.</div>
+                </div>
+                
+                <div class="settings-section adv-section">
+                    <!-- Default Screen -->
+                    <div class="form-group">
+                        <label>Startup Monitor</label>
+                        <select id="advMonitorSelector" class="full-width"></select>
+                    </div>
+                </div>
+
+                <div class="settings-section adv-section">
+                    <!-- Hide on enter -->
+                    <div class="settings-row">
+                        <h4>Hide window after synthesizing</h4>
+                        <label class="toggle-label">
+                            <input type="checkbox" class="toggle-input" id="advHideOnEnterCheckbox">
+                            <div class="toggle-track"></div>
+                            <span class="toggle-dot"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audio Tab -->
+            <div id="audio" class="category-panel">
+                <div>
+                    <h2>Audio Settings</h2>
+                    <div class="panel-description">Manage audio routing and playback outputs.</div>
+                </div>
+                
+                <div class="settings-section adv-section">
+                    <!-- Output Playback -->
+                    <div class="settings-row">
+                        <h4>Audio Playback</h4>
+                        <label class="toggle-label">
+                            <input type="checkbox" class="toggle-input" id="advOutputCheckbox">
+                            <div class="toggle-track"></div>
+                            <span class="toggle-dot"></span>
+                        </label>
+                    </div>
+                    <select id="advOutputSelector" class="full-width"></select>
+                    <div class="volume-row">
+                        <input id="advOutputSlider" type="range" value="50">
+                        <img src="assets/volume.svg" alt="volume" class="adv-volume-icon">
+                    </div>
+                </div>
+
+                <div class="settings-section adv-section">
+                    <!-- Monitoring -->
+                    <div class="settings-row">
+                        <h4>Audio Monitoring</h4>
+                        <label class="toggle-label">
+                            <input type="checkbox" class="toggle-input" id="advMonitoringCheckbox">
+                            <div class="toggle-track"></div>
+                            <span class="toggle-dot"></span>
+                        </label>
+                    </div>
+                    <select id="advMonitoringSelector" class="full-width"></select>
+                    <div class="volume-row">
+                        <input id="advMonitoringSlider" type="range" value="50">
+                        <img src="assets/volume.svg" alt="volume" class="adv-volume-icon">
+                    </div>
+                </div>
+            </div>
+
+            <!-- TTS Engine Tab -->
+            <div id="engine" class="category-panel">
+                <div>
+                    <h2>TTS Engine Config</h2>
+                    <div class="panel-description">Configure the active model and synthesis speed.</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Active Model</label>
+                    <select id="advModelSelector" class="full-width"></select>
+                </div>
+
+                <div class="form-group">
+                    <label>Voice Preset</label>
+                    <select id="advVoiceSelector" class="full-width"></select>
+                </div>
+
+                <div class="form-group">
+                    <label>Synthesis Speed</label>
+                    <div class="slider-container">
+                        <input id="advSpeedSlider" type="range" min="0.5" max="2.0" step="0.1" value="1.0" class="flex-grow">
+                        <span id="advSpeedValue" class="slider-value">1.0x</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Models Directory Path</label>
+                    <div class="form-row-flex">
+                        <input id="advModelsPathInput" type="text" placeholder="Default (~/.local/share/Moon-TTS/models/)">
+                        <button id="browsePathBtn" class="btn-secondary">Browse</button>
+                        <button id="savePathBtn" class="btn-primary">Save</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hotkeys Tab -->
+            <div id="hotkeys" class="category-panel">
+                <div>
+                    <h2>Global Hotkeys</h2>
+                    <div class="panel-description">Map global key combos to synthesize pre-defined phrases.</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Global Toggle Shortcut</label>
+                    <div class="form-row-flex">
+                        <input id="advToggleShortcutInput" type="text" placeholder="e.g. Ctrl+Alt+M" readonly>
+                        <button id="saveToggleShortcutBtn" class="btn-secondary">Change</button>
+                    </div>
+                </div>
+
+                <div class="adv-divider"></div>
+
+                <div class="form-group">
+                    <label>Hotkey-to-Speech Phrases</label>
+                    <div class="hotkey-composer">
+                        <input id="newHotkeyShortcut" type="text" placeholder="Press Select to record..." readonly>
+                        <button id="changeHotkeyBtn" class="btn-secondary">Select</button>
+                        <input id="newHotkeyPhrase" type="text" placeholder="Phrase to speak">
+                        <button id="addHotkeyBtn" class="btn-primary">Add</button>
+                    </div>
+                    
+                    <div class="list-container" id="hotkeysList">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="history" class="category-panel">
+                <div class="adv-history-header">
+                    <div>
+                        <h2>Synthesis History</h2>
+                        <div class="panel-description">Review and replay recently generated audio files.</div>
+                    </div>
+                    <button id="clearHistoryBtn" class="btn-danger">Clear All</button>
+                </div>
+
+                <div class="list-container flex-grow" id="historyList">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="scripts/advanced/advanced_tabs.js"></script>
+    <script src="scripts/advanced/advanced_general.js"></script>
+    <script src="scripts/advanced/advanced_audio.js"></script>
+    <script src="scripts/advanced/advanced_engine.js"></script>
+    <script src="scripts/advanced/advanced_hotkeys.js"></script>
+    <script src="scripts/advanced/advanced_history.js"></script>
+</body>
+</html>

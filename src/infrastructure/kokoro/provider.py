@@ -85,24 +85,29 @@ class KokoroTTSProvider:
                 "speed": 1.0,
             }
         )
+        self.preload_model()
+
+    def preload_model(self) -> None:
+        """Preload the TTS model in a background thread to speed up startup."""
+        import threading
+        
+        def _load():
+            try:
+                logger.info("Preloading TTS model in background thread...")
+                self._get_tts_instance()
+                logger.info("TTS model preloaded successfully.")
+            except Exception as e:
+                logger.error(f"Error preloading TTS model: {e}")
+
+        thread = threading.Thread(target=_load, daemon=True)
+        thread.start()
 
     # ------------------------------------------------------------------
     # Lazy model loading
     # ------------------------------------------------------------------
 
-    def _get_tts_instance(self) -> Kokoro:
-        """Return the lazily-loaded :class:`Kokoro` instance from local files.
-
-        Looks for the ONNX model and voice pack in:
-        1. settings.json "modelsPath" property
-        2. {app_directory}/models/kokoro/
-        3. {project_root}/src/models/kokoro/
-
-        Raises FileNotFoundError if not found.
-        """
-        if self.tts_instance is not None:
-            return self.tts_instance
-
+    def _resolve_model_paths(self) -> tuple[Path | None, Path | None]:
+        """Resolve the model and voices files from configured or default paths."""
         # 1. Check path from settings
         config = self.settings_manager.get_app_config()
         settings_models_path = config.get("modelsPath", "")
@@ -128,26 +133,34 @@ class KokoroTTSProvider:
         for path in search_paths:
             if path not in unique_paths:
                 unique_paths.append(path)
-        search_paths = unique_paths
 
-        model_path = None
-        voices_path = None
-
-        for path in search_paths:
+        for path in unique_paths:
             m_path = path / self.MODEL_FILENAME
             v_path = path / self.VOICES_FILENAME
             if m_path.exists() and v_path.exists():
-                model_path = m_path
-                voices_path = v_path
-                logger.info(f"Loaded Kokoro model and voices from: {path}")
-                break
+                return m_path, v_path
 
+        return None, None
+
+    def is_available(self) -> bool:
+        """Return True if the model and voices files are present."""
+        m, v = self._resolve_model_paths()
+        return m is not None and v is not None
+
+    def _get_tts_instance(self) -> Kokoro:
+        """Return the lazily-loaded :class:`Kokoro` instance from local files.
+
+        Looks for the ONNX model and voice pack in search paths.
+        Raises FileNotFoundError if not found.
+        """
+        if self.tts_instance is not None:
+            return self.tts_instance
+
+        model_path, voices_path = self._resolve_model_paths()
         if not model_path or not voices_path:
-            search_dirs_str = ", ".join(f"'{p}'" for p in search_paths)
             raise FileNotFoundError(
                 f"Could not find '{self.MODEL_FILENAME}' and '{self.VOICES_FILENAME}' "
-                f"in any of the searched directories: {search_dirs_str}. "
-                "Please place the model files in one of these directories to run the application offline."
+                "in configured or default directories."
             )
 
         self.tts_instance = Kokoro(str(model_path), str(voices_path))

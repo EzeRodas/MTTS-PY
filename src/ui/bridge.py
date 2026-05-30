@@ -24,14 +24,17 @@ class Bridge(QObject):
     close_app_requested = Signal()
     open_settings_requested = Signal(str)  # JSON string of button bounds
     close_settings_requested = Signal()
+    expand_settings_requested = Signal(bool)
     drag_start_requested = Signal(int, int)  # screenX, screenY
     drag_move_requested = Signal(int, int)   # screenX, screenY
     app_shortcut_changed = Signal(str)       # New shortcut string
     escape_pressed = Signal()
+    default_monitor_changed = Signal(int)    # Default monitor changed
 
     def __init__(self, app_controller=None, parent=None):
         super().__init__(parent)
         self._controller = app_controller
+        self.is_dialog_open = False
 
     def set_controller(self, controller):
         """Set the app controller after construction (for deferred init)."""
@@ -115,8 +118,41 @@ class Bridge(QObject):
                 self._controller.update_app_config(config)
                 if "appShortcut" in config:
                     self.app_shortcut_changed.emit(config["appShortcut"])
+                if "defaultMonitor" in config:
+                    self.default_monitor_changed.emit(int(config["defaultMonitor"]))
             except json.JSONDecodeError as e:
                 logger.error(f"updateAppConfig: invalid JSON: {e}")
+
+    @Slot(result=str)
+    def browseDirectory(self) -> str:
+        """Open a native folder selection dialog and return the chosen path."""
+        from PySide6.QtWidgets import QFileDialog
+        self.is_dialog_open = True
+        try:
+            path = QFileDialog.getExistingDirectory(
+                None,
+                "Select Models Directory",
+                "",
+                QFileDialog.Option.ShowDirsOnly
+            )
+            return path
+        finally:
+            self.is_dialog_open = False
+
+    @Slot(result=str)
+    def getScreens(self) -> str:
+        """Return JSON list of available screens/monitors."""
+        from PySide6.QtWidgets import QApplication
+        screens = QApplication.screens()
+        result = []
+        for i, s in enumerate(screens):
+            name = s.name()
+            if not name:
+                name = f"Monitor {i + 1}"
+            else:
+                name = f"Monitor {i + 1} ({name})"
+            result.append({"index": i, "name": name})
+        return json.dumps(result)
 
     # =========================================================================
     # Audio Devices
@@ -147,6 +183,99 @@ class Bridge(QObject):
     def closeSettings(self):
         """Request the settings window to close."""
         self.close_settings_requested.emit()
+
+    @Slot(bool)
+    def expandSettings(self, expanded: bool):
+        """Request the settings window to expand or collapse."""
+        self.expand_settings_requested.emit(expanded)
+
+    @Slot(str)
+    def openUrl(self, url: str):
+        """Open the given URL in the system's default browser."""
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtCore import QUrl
+        QDesktopServices.openUrl(QUrl(url))
+
+    # =========================================================================
+    # History Slots
+    # =========================================================================
+
+    @Slot(result=str)
+    def getHistory(self) -> str:
+        """Return JSON list of history text entries."""
+        if self._controller:
+            return json.dumps(self._controller.get_history())
+        return "[]"
+
+    @Slot(int)
+    def playHistory(self, history_id: int):
+        """Play historical audio by ID."""
+        if self._controller:
+            self._controller.play_history(history_id)
+
+    @Slot(int)
+    def deleteHistory(self, history_id: int):
+        """Delete historical entry by ID."""
+        if self._controller:
+            self._controller.delete_history(history_id)
+
+    @Slot()
+    def clearHistory(self):
+        """Clear all historical recordings."""
+        if self._controller:
+            self._controller.clear_history()
+
+    # =========================================================================
+    # Synthesis Speed
+    # =========================================================================
+
+    @Slot(result=float)
+    def getSpeed(self) -> float:
+        """Return the current Kokoro synthesis speed."""
+        if self._controller:
+            return self._controller.get_speed()
+        return 1.0
+
+    @Slot(float)
+    def setSpeed(self, speed: float):
+        """Set the Kokoro synthesis speed."""
+        if self._controller:
+            self._controller.set_speed(speed)
+
+    # =========================================================================
+    # Hotkey Slots
+    # =========================================================================
+
+    @Slot(result=str)
+    def getHotkeys(self) -> str:
+        """Return JSON list of hotkeys."""
+        if self._controller:
+            return json.dumps(self._controller.list_hotkeys())
+        return "[]"
+
+    @Slot(str, str)
+    def assignHotkey(self, hotkey: str, text: str):
+        """Assign a hotkey to a text phrase."""
+        if self._controller:
+            self._controller.assign_hotkey(hotkey, text)
+
+    @Slot(int)
+    def playHotkey(self, hotkey_id: int):
+        """Play a hotkeyed phrase by ID."""
+        if self._controller:
+            self._controller.play_hotkey(hotkey_id)
+
+    @Slot(int)
+    def deleteHotkey(self, hotkey_id: int):
+        """Delete a hotkey mapping by ID."""
+        if self._controller:
+            self._controller.delete_hotkey(hotkey_id)
+
+    @Slot()
+    def clearHotkeys(self):
+        """Clear all hotkeys."""
+        if self._controller:
+            self._controller.clear_hotkeys()
 
     # =========================================================================
     # Drag Support
