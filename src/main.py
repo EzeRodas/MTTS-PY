@@ -30,7 +30,7 @@ if sys.platform == "linux":
     os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QSharedMemory, QByteArray, Qt
+from PySide6.QtCore import QSharedMemory, QByteArray, Qt, QObject, Slot
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 # Configure logging
@@ -42,6 +42,109 @@ logger = logging.getLogger("Moon-TTS")
 
 APP_NAME = "Moon-TTS"
 SOCKET_NAME = "moon-tts-single-instance"
+
+
+hotkey_mgr = None
+
+
+class BootstrapReceiver(QObject):
+    def __init__(self, bridge, main_window, settings_window):
+        super().__init__()
+        self.bridge = bridge
+        self.main_window = main_window
+        self.settings_window = settings_window
+
+    @Slot(object)
+    def on_backend_initialized(self, app_controller):
+        try:
+            if app_controller is None:
+                return
+
+            self.bridge.set_controller(app_controller)
+
+            # Position window on the configured monitor
+            try:
+                self.main_window._position_at_bottom_center()
+            except Exception as e:
+                logger.error(f"Error positioning window: {e}")
+
+            # Setup the global hotkey listener on the main thread
+            try:
+                from src.infrastructure.global_shortcut import GlobalHotkeyManager
+                global hotkey_mgr
+                hotkey_mgr = GlobalHotkeyManager()
+
+                def toggle_app_visibility():
+                    if self.main_window.isVisible():
+                        self.main_window.hide()
+                        self.settings_window.hide()
+                    else:
+                        self.main_window.show()
+                        self.main_window.raise_()
+                        self.main_window.activateWindow()
+
+                hotkey_mgr.activated.connect(toggle_app_visibility, Qt.QueuedConnection)
+
+                # Load and register initial app shortcut
+                app_config = app_controller.get_app_config()
+                initial_shortcut = app_config.get("appShortcut", "Ctrl+Alt+M")
+                if initial_shortcut:
+                    hotkey_mgr.register_shortcut(initial_shortcut)
+
+                # Listen for shortcut changes from settings UI
+                self.bridge.app_shortcut_changed.connect(hotkey_mgr.register_shortcut)
+                
+                def handle_shortcut_bound(actual_shortcut: str):
+                    logger.info(f"Main thread: shortcut bound by OS: {actual_shortcut}")
+                    app_controller.update_app_config({"appShortcut": actual_shortcut})
+                    self.bridge.shortcut_updated_by_os.emit(actual_shortcut)
+                    self.bridge.app_shortcut_changed.emit(actual_shortcut)
+                
+                hotkey_mgr.shortcut_bound.connect(handle_shortcut_bound, Qt.QueuedConnection)
+            except Exception as e:
+                logger.error(f"Error setting up hotkey manager: {e}")
+        finally:
+            # Mark ready and notify the UI under all circumstances
+            self.bridge.is_ready = True
+            self.bridge.app_ready.emit()
+            logger.info("Main thread: Backend linked and app_ready signal emitted.")
+
+
+def install_desktop_file():
+    """Generates and writes a .desktop file to ~/.local/share/applications/moon-tts.desktop"""
+    if sys.platform != "linux":
+        return
+    try:
+        desktop_dir = Path.home() / ".local" / "share" / "applications"
+        desktop_dir.mkdir(parents=True, exist_ok=True)
+        desktop_file_path = desktop_dir / "moon-tts.desktop"
+        
+        main_py_path = Path(__file__).resolve()
+        icon_path = Path(__file__).parent.resolve() / "ui" / "web" / "assets" / "icon.png"
+        project_root_path = Path(__file__).resolve().parent.parent
+        
+        exec_line = f"{sys.executable} {main_py_path}"
+        
+        content = f"""[Desktop Entry]
+Type=Application
+Name=Moon-TTS
+Comment=Moon-TTS system-wide Text-to-Speech
+Exec={exec_line}
+Icon={icon_path}
+Path={project_root_path}
+Terminal=false
+Categories=Utility;Audio;
+StartupWMClass=moon-tts
+"""
+        desktop_file_path.write_text(content, encoding="utf-8")
+        try:
+            import subprocess
+            subprocess.run(["update-desktop-database", str(desktop_dir)], check=False)
+        except Exception as db_e:
+            logger.debug(f"Failed to update desktop database: {db_e}")
+        logger.info(f"Installed/updated desktop file at: {desktop_file_path}")
+    except Exception as e:
+        logger.error(f"Failed to install desktop file: {e}")
 
 
 def send_command_to_running_instance(args: list[str]) -> bool:
@@ -75,7 +178,12 @@ def main():
     # Handle graceful SIGINT (Ctrl+C)
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
+    if sys.platform == "linux":
+        install_desktop_file()
+
     app = QApplication(sys.argv)
+    if sys.platform == "linux":
+        app.setDesktopFileName("moon-tts")
     app.setApplicationName(APP_NAME)
     app.setQuitOnLastWindowClosed(False)  # Tray keeps app alive
     app.setProperty("is_quitting", False)
@@ -133,51 +241,8 @@ def main():
     # -----------------------------------------------------------------
     import threading
 
-    hotkey_mgr = None
-
-    def on_backend_initialized(app_controller):
-        if app_controller is None:
-            # Emit ready anyway so UI is not permanently locked on error
-            bridge.is_ready = True
-            bridge.app_ready.emit()
-            return
-
-        bridge.set_controller(app_controller)
-
-        # Position window on the configured monitor
-        main_window._position_at_bottom_center()
-
-        # Setup the global hotkey listener on the main thread
-        from src.infrastructure.global_shortcut import GlobalHotkeyManager
-        nonlocal hotkey_mgr
-        hotkey_mgr = GlobalHotkeyManager()
-
-        def toggle_app_visibility():
-            if main_window.isVisible():
-                main_window.hide()
-                settings_window.hide()
-            else:
-                main_window.show()
-                main_window.raise_()
-                main_window.activateWindow()
-
-        hotkey_mgr.activated.connect(toggle_app_visibility, Qt.QueuedConnection)
-
-        # Load and register initial app shortcut
-        app_config = app_controller.get_app_config()
-        initial_shortcut = app_config.get("appShortcut", "Ctrl+Alt+M")
-        if initial_shortcut:
-            hotkey_mgr.register_shortcut(initial_shortcut)
-
-        # Listen for shortcut changes from settings UI
-        bridge.app_shortcut_changed.connect(hotkey_mgr.register_shortcut)
-
-        # Mark ready and notify the UI
-        bridge.is_ready = True
-        bridge.app_ready.emit()
-        logger.info("Main thread: Backend linked and hotkeys registered. App is ready.")
-
-    bridge.backend_initialized.connect(on_backend_initialized)
+    receiver = BootstrapReceiver(bridge, main_window, settings_window)
+    bridge.backend_initialized.connect(receiver.on_backend_initialized)
 
     def _bg_bootstrap():
         try:

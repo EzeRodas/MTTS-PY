@@ -11,6 +11,7 @@ import threading
 import asyncio
 from typing import Optional
 from PySide6.QtCore import QObject, Signal
+import hashlib
 
 try:
     import dbus_next
@@ -152,15 +153,17 @@ def to_portal_shortcut(qt_shortcut: str) -> str:
 class DBusLoopRunner:
     """Manages an asyncio loop in a separate thread for dbus-next portal interaction."""
 
-    def __init__(self, activated_callback, fallback_callback) -> None:
+    def __init__(self, activated_callback, fallback_callback, bound_callback=None) -> None:
         self.activated_callback = activated_callback
         self.fallback_callback = fallback_callback
+        self.bound_callback = bound_callback
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.thread: Optional[threading.Thread] = None
         self.bus: Optional[MessageBus] = None
         self.session_proxy = None
         self.shortcuts_interface = None
         self.session_handle: Optional[str] = None
+        self.last_trigger_str = None
         self._is_running = False
 
     def start(self) -> None:
@@ -212,57 +215,121 @@ class DBusLoopRunner:
 
     async def _register(self, trigger_str: str) -> None:
         try:
-            await self._cleanup()
+            # Check if the trigger has changed. If so, close the old session to force a fresh re-bind prompt.
+            if self.session_handle and self.last_trigger_str != trigger_str:
+                logger.info(f"Shortcut changed from '{self.last_trigger_str}' to '{trigger_str}'. Closing existing session to trigger re-prompt.")
+                if self.session_proxy:
+                    try:
+                        await self.session_proxy.call_close()
+                    except Exception as e:
+                        logger.debug(f"Error closing D-Bus portal session: {e}")
+                    self.session_proxy = None
+                self.session_handle = None
 
-            self.bus = await MessageBus().connect()
+            # 1. Connect message bus if not already connected
+            if not self.bus:
+                self.bus = await MessageBus().connect()
 
-            intro = Node.parse(GLOBAL_SHORTCUTS_XML)
-            obj = self.bus.get_proxy_object(
-                "org.freedesktop.portal.Desktop",
-                "/org/freedesktop/portal/desktop",
-                intro
-            )
-            self.shortcuts_interface = obj.get_interface("org.freedesktop.portal.GlobalShortcuts")
+            # 2. Get shortcuts interface if not already retrieved
+            if not self.shortcuts_interface:
+                # Register the connection with the host portal Registry (only for host applications)
+                try:
+                    reg_intro = Node.parse("""
+                    <!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                     "http://www.freedesktop.org/standards/dbus/introspect.dtd">
+                    <node>
+                      <interface name="org.freedesktop.host.portal.Registry">
+                        <method name="Register">
+                          <arg type="s" name="app_id" direction="in"/>
+                          <arg type="a{sv}" name="options" direction="in"/>
+                        </method>
+                      </interface>
+                    </node>
+                    """)
+                    reg_obj = self.bus.get_proxy_object(
+                        "org.freedesktop.portal.Desktop",
+                        "/org/freedesktop/portal/desktop",
+                        reg_intro
+                    )
+                    reg_interface = reg_obj.get_interface("org.freedesktop.host.portal.Registry")
+                    logger.info("Registering app_id 'moon-tts' with host portal Registry...")
+                    await reg_interface.call_register("moon-tts", {})
+                except Exception as e:
+                    logger.debug(f"Host portal Registry registration skipped/failed: {e}")
 
-            # 1. CreateSession
-            session_token = "moontts_session_token"
-            request_token = "moontts_session_request_token"
-            options = {
-                "session_handle_token": Variant("s", session_token),
-                "handle_token": Variant("s", request_token)
-            }
+                intro = Node.parse(GLOBAL_SHORTCUTS_XML)
+                obj = self.bus.get_proxy_object(
+                    "org.freedesktop.portal.Desktop",
+                    "/org/freedesktop/portal/desktop",
+                    intro
+                )
+                self.shortcuts_interface = obj.get_interface("org.freedesktop.portal.GlobalShortcuts")
 
-            request_path = await self.shortcuts_interface.call_create_session(options)
+                # Connect the Activated signal listener once
+                def on_activated(session, shortcut_id, timestamp, options):
+                    if shortcut_id.startswith("toggle_app_visibility"):
+                        self.activated_callback()
 
-            req_intro = Node.parse(REQUEST_XML)
-            req_obj = self.bus.get_proxy_object("org.freedesktop.portal.Desktop", request_path, req_intro)
-            req_interface = req_obj.get_interface("org.freedesktop.portal.Request")
+                self.shortcuts_interface.on_activated(on_activated)
 
-            session_resp_future = asyncio.Future()
+            # 3. Create Session if not already active
+            if not self.session_handle:
+                import uuid
+                rand_hex = uuid.uuid4().hex[:8]
+                session_token = f"moontts_session_{rand_hex}"
+                request_token = f"moontts_req_{rand_hex}"
+                options = {
+                    "session_handle_token": Variant("s", session_token),
+                    "handle_token": Variant("s", request_token)
+                }
 
-            def on_session_response(res_code, results):
-                if res_code == 0:
-                    session_resp_future.set_result(results)
-                else:
-                    session_resp_future.set_exception(RuntimeError(f"CreateSession error: {res_code}"))
+                request_path = await self.shortcuts_interface.call_create_session(options)
 
-            req_interface.on_response(on_session_response)
+                req_intro = Node.parse(REQUEST_XML)
+                req_obj = self.bus.get_proxy_object("org.freedesktop.portal.Desktop", request_path, req_intro)
+                req_interface = req_obj.get_interface("org.freedesktop.portal.Request")
 
-            results = await asyncio.wait_for(session_resp_future, timeout=5.0)
-            self.session_handle = results["session_handle"].value
+                session_resp_future = asyncio.Future()
 
-            # 2. BindShortcuts
+                def on_session_response(res_code, results):
+                    if session_resp_future.done():
+                        return
+                    if res_code == 0:
+                        session_resp_future.set_result(results)
+                    else:
+                        session_resp_future.set_exception(RuntimeError(f"CreateSession error: {res_code}"))
+
+                req_interface.on_response(on_session_response)
+
+                results = await asyncio.wait_for(session_resp_future, timeout=5.0)
+                self.session_handle = results["session_handle"].value
+
+                # Get session object for closing cleanly on unregister
+                sess_intro = Node.parse(SESSION_XML)
+                sess_obj = self.bus.get_proxy_object("org.freedesktop.portal.Desktop", self.session_handle, sess_intro)
+                self.session_proxy = sess_obj.get_interface("org.freedesktop.portal.Session")
+
+            # Generate a shortcut ID based on a hash of the trigger string
+            # to prevent the desktop environment from using a cached shortcut mapping.
+            trigger_hash = hashlib.md5(trigger_str.encode('utf-8')).hexdigest()[:8]
+            shortcut_id = f"toggle_app_visibility_{trigger_hash}"
+
+            # 4. BindShortcuts (always call this to register or update the shortcut trigger)
             shortcuts = [
                 [
-                    "toggle_app_visibility",
+                    shortcut_id,
                     {
                         "description": Variant("s", "Show/Hide Moon-TTS"),
                         "preferred_trigger": Variant("s", trigger_str)
                     }
                 ]
             ]
+            
+            # Generate a fresh, unique bind handle token for this request
+            import uuid
+            bind_token = f"moontts_bind_{uuid.uuid4().hex[:8]}"
             bind_options = {
-                "handle_token": Variant("s", "moontts_bind_request_token")
+                "handle_token": Variant("s", bind_token)
             }
 
             bind_req_path = await self.shortcuts_interface.call_bind_shortcuts(
@@ -272,12 +339,15 @@ class DBusLoopRunner:
                 bind_options
             )
 
+            req_intro = Node.parse(REQUEST_XML)
             bind_obj = self.bus.get_proxy_object("org.freedesktop.portal.Desktop", bind_req_path, req_intro)
             bind_req_interface = bind_obj.get_interface("org.freedesktop.portal.Request")
 
             bind_resp_future = asyncio.Future()
 
             def on_bind_response(res_code, results):
+                if bind_resp_future.done():
+                    return
                 if res_code == 0:
                     bind_resp_future.set_result(results)
                 else:
@@ -285,20 +355,26 @@ class DBusLoopRunner:
 
             bind_req_interface.on_response(on_bind_response)
 
-            await asyncio.wait_for(bind_resp_future, timeout=10.0)
-
-            # Get session object for closing cleanly on unregister
-            sess_intro = Node.parse(SESSION_XML)
-            sess_obj = self.bus.get_proxy_object("org.freedesktop.portal.Desktop", self.session_handle, sess_intro)
-            self.session_proxy = sess_obj.get_interface("org.freedesktop.portal.Session")
-
-            # 3. Listen for Activated signal
-            def on_activated(session, shortcut_id, timestamp, options):
-                if shortcut_id == "toggle_app_visibility":
-                    self.activated_callback()
-
-            self.shortcuts_interface.on_activated(on_activated)
+            bind_res = await asyncio.wait_for(bind_resp_future, timeout=10.0)
+            self.last_trigger_str = trigger_str
             logger.info(f"Registered portal global shortcut: '{trigger_str}'")
+
+            # Extract actual bound shortcut from response
+            actual_shortcut = None
+            if "shortcuts" in bind_res:
+                shortcuts_val = bind_res["shortcuts"].value
+                for shortcut_tuple in shortcuts_val:
+                    if len(shortcut_tuple) >= 2 and shortcut_tuple[0] == shortcut_id:
+                        props = shortcut_tuple[1]
+                        if "trigger_description" in props:
+                            actual_shortcut = props["trigger_description"].value
+                        elif "triggers" in props and props["triggers"].value:
+                            actual_shortcut = props["triggers"].value[0]
+            
+            if actual_shortcut and self.bound_callback:
+                # XDG Portal trigger_description uses typical 'Ctrl+Shift+P' string representation
+                logger.info(f"Portal returned bound shortcut: '{actual_shortcut}'")
+                self.bound_callback(actual_shortcut)
 
         except Exception as e:
             logger.warning(f"Freedesktop portal shortcut registration failed: {e}. Falling back to pynput.")
@@ -314,6 +390,7 @@ class GlobalHotkeyManager(QObject):
 
     activated = Signal()
     fallback_needed = Signal(str)
+    shortcut_bound = Signal(str)
 
     def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -324,7 +401,13 @@ class GlobalHotkeyManager(QObject):
 
     def register_shortcut(self, qt_shortcut: str) -> None:
         """Register a new global shortcut, unregistering any prior binding."""
-        self.unregister()
+        # Unregister the pynput listener only so we don't start duplicate pynput hooks
+        if self._listener:
+            try:
+                self._listener.stop()
+            except Exception as e:
+                logger.debug(f"Error stopping hotkey listener: {e}")
+            self._listener = None
 
         if not qt_shortcut:
             return
@@ -338,7 +421,8 @@ class GlobalHotkeyManager(QObject):
             if not self._dbus_runner:
                 self._dbus_runner = DBusLoopRunner(
                     activated_callback=self.activated.emit,
-                    fallback_callback=self._on_dbus_fallback
+                    fallback_callback=self._on_dbus_fallback,
+                    bound_callback=self._on_shortcut_bound
                 )
                 self._dbus_runner.start()
 
@@ -346,12 +430,25 @@ class GlobalHotkeyManager(QObject):
         else:
             self._register_pynput(qt_shortcut)
 
+    def _on_shortcut_bound(self, actual_shortcut: str) -> None:
+        """Called when the portal successfully binds a shortcut, providing the actual bound string."""
+        if actual_shortcut != self._current_shortcut:
+            self._current_shortcut = actual_shortcut
+            self.shortcut_bound.emit(actual_shortcut)
+
     def _on_dbus_fallback(self) -> None:
         """Called asynchronously when portal binding fails."""
-        self.fallback_needed.emit(self._current_shortcut)
+        if not sys.platform.startswith("linux"):
+            self.fallback_needed.emit(self._current_shortcut)
+        else:
+            logger.warning("Portal shortcut registration failed/timed out. Cannot fallback to pynput on Linux (Wayland compatibility).")
 
     def _register_pynput(self, qt_shortcut: str) -> None:
         """Register shortcut using the standard pynput listener hook."""
+        if sys.platform.startswith("linux"):
+            logger.warning("pynput fallback disabled on Linux.")
+            return
+
         if not qt_shortcut:
             return
         

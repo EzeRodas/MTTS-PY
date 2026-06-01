@@ -32,6 +32,7 @@ class Bridge(QObject):
     default_monitor_changed = Signal(int)    # Default monitor changed
     app_ready = Signal()                     # Emitted when initialization is done
     backend_initialized = Signal(object)     # Emitted from bg thread with AppController
+    shortcut_updated_by_os = Signal(str)     # Emitted when OS changes the shortcut
 
     def __init__(self, app_controller=None, parent=None):
         super().__init__(parent)

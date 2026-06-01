@@ -176,6 +176,14 @@ function loadHotkeysTab() {
         });
     });
 
+    // Listen for OS-bound shortcut updates
+    api.shortcut_updated_by_os.connect(function(actualShortcut) {
+        const shortcutInput = document.getElementById('advToggleShortcutInput');
+        if (shortcutInput) {
+            shortcutInput.value = actualShortcut;
+        }
+    });
+
     // Phrase hotkey change button
     const hkInput = document.getElementById('newHotkeyShortcut');
     const changeHkBtn = document.getElementById('changeHotkeyBtn');

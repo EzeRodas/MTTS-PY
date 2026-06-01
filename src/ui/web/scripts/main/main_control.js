@@ -48,11 +48,10 @@ window.checkReadiness = function() {
 
 window.addEventListener('bridgeReady', () => {
     if (api) {
+        api.app_ready.connect(enableUI);
         api.isReady(function(ready) {
             if (ready) {
                 enableUI();
-            } else {
-                api.app_ready.connect(enableUI);
             }
         });
     }
