@@ -174,6 +174,9 @@ class SettingsWindow(QMainWindow):
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
-        """Hide instead of destroy."""
-        event.ignore()
-        self.hide()
+        """Hide instead of destroy, unless app is quitting."""
+        if QApplication.instance().property("is_quitting"):
+            event.accept()
+        else:
+            event.ignore()
+            self.hide()

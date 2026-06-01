@@ -11,12 +11,14 @@
         <div class="adv-nav">
             <button class="nav-item active" onclick="switchTab('general', this)">General</button>
             <button class="nav-item" onclick="switchTab('audio', this)">Audio</button>
+            <button class="nav-item" onclick="switchTab('dictionary', this)">Dictionary</button>
             <button class="nav-item" onclick="switchTab('engine', this)">TTS Engine</button>
             <button class="nav-item" onclick="switchTab('hotkeys', this)">Hotkeys</button>
             <button class="nav-item" onclick="switchTab('history', this)">History</button>
             <div class="flex-spacer"></div>
             <button class="nav-item nav-item-back" id="backToQuickBtn">< Quick Settings</button>
-            <button class="nav-item nav-item-close" id="closeSettingsBtn">Close</button>
+            <button class="nav-item nav-item-close" id="closeSettingsBtn">Close Settings</button>
+            <button class="nav-item nav-item-close" id="exitAppBtn">Exit Moon-TTS</button>
         </div>
 
         <!-- Content -->
@@ -87,6 +89,38 @@
                     <div class="volume-row">
                         <input id="advMonitoringSlider" type="range" value="50">
                         <img src="assets/volume.svg" alt="volume" class="adv-volume-icon">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dictionary Tab -->
+            <div id="dictionary" class="category-panel">
+                <div>
+                    <h2>Dictionary</h2>
+                    <div class="panel-description">
+                        Replace specific words before text is sent to the TTS engine.<br><br>
+                        <strong>Note:</strong> Testing pronunciations requires <Strong>Audio Monitoring</Strong> to be enabled.
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Add New Replacement</label>
+                    <div class="dict-composer">
+                        <div class="dict-composer-row">
+                            <input id="newDictOriginal" type="text" placeholder="Original text (max 30 chars)" maxlength="30">
+                            <input id="newDictSpelling" type="text" placeholder="Spelling (max 30 chars)" maxlength="30">
+                        </div>
+                        <div class="dict-composer-row-actions">
+                            <label class="dict-checkbox-label">
+                                <input type="checkbox" id="newDictCaseSensitive">
+                                Case sensitive
+                            </label>
+                            <button id="addDictBtn" class="btn-primary">Add</button>
+                        </div>
+                    </div>
+                    
+                    <div class="list-container dict-list-container" id="dictionaryList">
+                        <!-- Populated dynamically -->
                     </div>
                 </div>
             </div>
@@ -181,5 +215,6 @@
     <script src="scripts/advanced/advanced_engine.js"></script>
     <script src="scripts/advanced/advanced_hotkeys.js"></script>
     <script src="scripts/advanced/advanced_history.js"></script>
+    <script src="scripts/advanced/advanced_dictionary.js"></script>
 </body>
 </html>

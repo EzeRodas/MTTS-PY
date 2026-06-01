@@ -14,6 +14,7 @@ function switchTab(tabId, button) {
     // Tab-specific loads
     if (tabId === 'general') loadGeneralTab();
     if (tabId === 'audio') loadAudioTab();
+    if (tabId === 'dictionary') loadDictionaryTab();
     if (tabId === 'engine') loadEngineTab();
     if (tabId === 'hotkeys') loadHotkeysTab();
     if (tabId === 'history') loadHistoryTab();
@@ -28,6 +29,10 @@ document.getElementById('backToQuickBtn').addEventListener('click', () => {
 
 document.getElementById('closeSettingsBtn').addEventListener('click', () => {
     if (api) api.closeSettings();
+});
+
+document.getElementById('exitAppBtn').addEventListener('click', () => {
+    if (api) api.quitApp();
 });
 
 // Toast Notification helper

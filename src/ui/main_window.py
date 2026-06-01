@@ -57,6 +57,7 @@ class MainWindow(QMainWindow):
 
         # Connect bridge signals
         self._bridge.close_app_requested.connect(self._on_close_requested)
+        self._bridge.quit_app_requested.connect(self._on_quit_requested)
         self._bridge.drag_start_requested.connect(self._on_drag_start)
         self._bridge.drag_move_requested.connect(self._on_drag_move)
         self._bridge.default_monitor_changed.connect(self._on_default_monitor_changed)
@@ -96,6 +97,13 @@ class MainWindow(QMainWindow):
     def _on_close_requested(self):
         """Hide instead of close (tray app behavior)."""
         self.hide()
+
+    def _on_quit_requested(self):
+        """Fully quit the application."""
+        app = QApplication.instance()
+        if app:
+            app.setProperty("is_quitting", True)
+        QApplication.quit()
 
     def _on_drag_start(self, screen_x: int, screen_y: int):
         """Begin window drag from the given screen coordinates."""

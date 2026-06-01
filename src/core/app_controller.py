@@ -8,6 +8,8 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+from src.core.dictionary_manager import DictionaryManager
+
 class AppController:
     """
     Facade coordinating the core domain services of the TTS application.
@@ -20,6 +22,7 @@ class AppController:
         self._audio_service = audio_service
         self._hotkey_manager = hotkey_manager
         self._history_manager = history_manager
+        self._dictionary_manager = DictionaryManager(settings_manager)
         self._available_models = ["kokoro"]
         self._active_model = "kokoro"
 
@@ -30,7 +33,9 @@ class AppController:
     def process_input(self, text: str) -> None:
         """Synthesize and play back the given text."""
         try:
-            self._tts_service.speak(text)
+            # Apply dictionary replacements
+            processed_text = self._dictionary_manager.replace_text(text)
+            self._tts_service.speak(processed_text)
         except Exception as e:
             logger.error(f"Error processing TTS input: {e}")
 
@@ -166,5 +171,27 @@ class AppController:
     def clear_hotkeys(self) -> None:
         """Clear all hotkeys."""
         self._hotkey_manager.clear_hotkeys()
+
+    # =========================================================================
+    # Dictionary
+    # =========================================================================
+
+    def get_dictionary(self) -> list[dict]:
+        return self._dictionary_manager.get_dictionary()
+
+    def add_dictionary_entry(self, original: str, spelling: str, case_sensitive: bool) -> bool:
+        return self._dictionary_manager.add_entry(original, spelling, case_sensitive)
+
+    def update_dictionary_entry(self, index: int, original: str, spelling: str, case_sensitive: bool) -> bool:
+        return self._dictionary_manager.update_entry(index, original, spelling, case_sensitive)
+
+    def delete_dictionary_entry(self, index: int) -> bool:
+        return self._dictionary_manager.delete_entry(index)
+
+    def preview_dictionary_spelling(self, spelling: str) -> None:
+        if hasattr(self._tts_service, "preview_spelling"):
+            self._tts_service.preview_spelling(spelling)
+        else:
+            logger.warning("preview_spelling not supported by active TTS service.")
 
 

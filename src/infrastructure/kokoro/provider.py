@@ -257,6 +257,51 @@ class KokoroTTSProvider:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
+    def preview_spelling(self, spelling: str) -> None:
+        """Synthesize *spelling* and play it ONLY through the monitoring device.
+        Does not record history.
+        """
+        tts = self._get_tts_instance()
+        config = self.kokoro_config
+
+        voice_id = config.get("voiceId", "af_heart")
+        speed = config.get("speed", 1.0)
+        lang = get_language_for_voice(voice_id)
+
+        samples, sample_rate = tts.create(
+            spelling,
+            voice=voice_id,
+            speed=speed,
+            lang=lang,
+        )
+
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".wav")
+        os.close(tmp_fd)
+
+        try:
+            import soundfile as sf
+            sf.write(tmp_path, samples, sample_rate)
+
+            app_config = self.settings_manager.get_app_config()
+            monitoring = app_config.get("monitoring", False)
+            if not monitoring:
+                logger.warning("Monitoring is disabled, preview will not play.")
+                return
+
+            monitoring_device_id = app_config.get("monitoringDevice", "default")
+            monitoring_volume = app_config.get("monitoringVolume", 0.8)
+
+            self.audio_service.play(
+                file_path=tmp_path,
+                playback=False,
+                monitoring=True,
+                monitoring_device_id=monitoring_device_id,
+                monitoring_volume=monitoring_volume,
+            )
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
     def generate_to_file(self, text: str, file_path: str) -> None:
         """Synthesise *text* and write the result directly to *file_path*.
 

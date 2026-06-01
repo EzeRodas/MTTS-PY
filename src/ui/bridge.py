@@ -22,6 +22,7 @@ class Bridge(QObject):
 
     # Signals emitted to the UI layer (Qt side)
     close_app_requested = Signal()
+    quit_app_requested = Signal()
     open_settings_requested = Signal(str)  # JSON string of button bounds
     close_settings_requested = Signal()
     expand_settings_requested = Signal(bool)
@@ -183,6 +184,11 @@ class Bridge(QObject):
         """Request the main window to close/hide."""
         self.close_app_requested.emit()
 
+    @Slot()
+    def quitApp(self):
+        """Fully quit the application."""
+        self.quit_app_requested.emit()
+
     @Slot(str)
     def openSettings(self, bounds_json: str):
         """Request the settings window to open, positioned relative to the button."""
@@ -233,6 +239,44 @@ class Bridge(QObject):
         """Clear all historical recordings."""
         if self._controller:
             self._controller.clear_history()
+
+    # =========================================================================
+    # Dictionary Slots
+    # =========================================================================
+
+    @Slot(result=str)
+    def getDictionary(self) -> str:
+        """Return JSON list of dictionary entries."""
+        if self._controller:
+            return json.dumps(self._controller.get_dictionary())
+        return "[]"
+
+    @Slot(str, str, bool, result=bool)
+    def addDictionaryEntry(self, original: str, spelling: str, case_sensitive: bool) -> bool:
+        """Add a new dictionary replacement entry."""
+        if self._controller:
+            return self._controller.add_dictionary_entry(original, spelling, case_sensitive)
+        return False
+
+    @Slot(int, str, str, bool, result=bool)
+    def updateDictionaryEntry(self, index: int, original: str, spelling: str, case_sensitive: bool) -> bool:
+        """Update an existing dictionary replacement entry."""
+        if self._controller:
+            return self._controller.update_dictionary_entry(index, original, spelling, case_sensitive)
+        return False
+
+    @Slot(int, result=bool)
+    def deleteDictionaryEntry(self, index: int) -> bool:
+        """Delete a dictionary replacement entry."""
+        if self._controller:
+            return self._controller.delete_dictionary_entry(index)
+        return False
+
+    @Slot(str)
+    def testDictionarySpelling(self, spelling: str):
+        """Preview a dictionary spelling through the monitoring device."""
+        if self._controller:
+            self._controller.preview_dictionary_spelling(spelling)
 
     # =========================================================================
     # Synthesis Speed
