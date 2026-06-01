@@ -30,11 +30,14 @@ class Bridge(QObject):
     app_shortcut_changed = Signal(str)       # New shortcut string
     escape_pressed = Signal()
     default_monitor_changed = Signal(int)    # Default monitor changed
+    app_ready = Signal()                     # Emitted when initialization is done
+    backend_initialized = Signal(object)     # Emitted from bg thread with AppController
 
     def __init__(self, app_controller=None, parent=None):
         super().__init__(parent)
         self._controller = app_controller
         self.is_dialog_open = False
+        self.is_ready = False
 
     def set_controller(self, controller):
         """Set the app controller after construction (for deferred init)."""
@@ -122,6 +125,11 @@ class Bridge(QObject):
                     self.default_monitor_changed.emit(int(config["defaultMonitor"]))
             except json.JSONDecodeError as e:
                 logger.error(f"updateAppConfig: invalid JSON: {e}")
+
+    @Slot(result=bool)
+    def isReady(self) -> bool:
+        """Return True if background initialization has completed."""
+        return self.is_ready
 
     @Slot(result=str)
     def browseDirectory(self) -> str:

@@ -21,6 +21,9 @@ body { margin: 16px; height: calc(100% - 32px); width: calc(100% - 32px); }
 .text-input { border-radius: 24px; background: white; padding: 0 16px; flex-grow: 1; height: 48px; outline: none; border: none; font-size: 20px; font-family: 'Nunito', sans-serif; color: #374151; }
 .close-btn { background: white; border-radius: 24px; width: 20px; height: 20px; font-weight: bold; cursor: pointer; font-size: 14px; outline: none; border: none; transition: background-color 0.15s; display: flex; align-items: center; justify-content: center; }
 .close-btn:hover { background-color: #d1d5db; }
+.text-input:disabled { background: #e5e7eb; color: #9ca3af; cursor: not-allowed; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Settings window */
 .main-layout { display: flex; flex-direction: row; width: 100%; height: 100%; gap: 16px; }

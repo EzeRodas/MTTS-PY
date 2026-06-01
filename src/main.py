@@ -96,38 +96,14 @@ def main():
         logger.error(f"Failed to start local server: {local_server.errorString()}")
 
     # -----------------------------------------------------------------
-    # Bootstrap backend services
-    # -----------------------------------------------------------------
-    from src.core.settings_manager import SettingsManager
-    from src.infrastructure.audio_service import AudioService
-    from src.core.history_manager import HistoryManager
-    from src.infrastructure.kokoro import KokoroTTSProvider
-    from src.core.hotkey_manager import HotkeyManager
-    from src.core.app_controller import AppController
-
-    settings_manager = SettingsManager()
-    audio_service = AudioService()
-    history_manager = HistoryManager(audio_service, settings_manager)
-    tts_provider = KokoroTTSProvider(settings_manager, audio_service, history_manager)
-    hotkey_manager = HotkeyManager(tts_provider, audio_service, settings_manager)
-    hotkey_manager.init()
-
-    # Initialize app config on disk
-    settings_manager.get_app_config()
-
-    app_controller = AppController(
-        tts_provider, settings_manager, audio_service, hotkey_manager, history_manager
-    )
-
-    # -----------------------------------------------------------------
-    # Build UI
+    # Build UI First (Renders UI instantly)
     # -----------------------------------------------------------------
     from src.ui.bridge import Bridge
     from src.ui.main_window import MainWindow
     from src.ui.settings_window import SettingsWindow
     from src.ui.tray import TrayIcon
 
-    bridge = Bridge(app_controller)
+    bridge = Bridge(None)
     main_window = MainWindow(bridge)
     settings_window = SettingsWindow(bridge)
 
@@ -144,40 +120,109 @@ def main():
 
     bridge.escape_pressed.connect(hide_all_windows)
 
-    # -----------------------------------------------------------------
-    # Global hotkey listener (Ctrl+Alt+M toggle)
-    # -----------------------------------------------------------------
-    from src.infrastructure.global_shortcut import GlobalHotkeyManager
-
-    hotkey_mgr = GlobalHotkeyManager()
-
-    def toggle_app_visibility():
-        if main_window.isVisible():
-            main_window.hide()
-            settings_window.hide()
-        else:
-            main_window.show()
-            main_window.raise_()
-            main_window.activateWindow()
-
-    hotkey_mgr.activated.connect(toggle_app_visibility, Qt.QueuedConnection)
-
-    # Load and register initial app shortcut
-    app_config = settings_manager.get_app_config()
-    initial_shortcut = app_config.get("appShortcut", "Ctrl+Alt+M")
-    if initial_shortcut:
-        hotkey_mgr.register_shortcut(initial_shortcut)
-
-    # Listen for shortcut changes from settings UI
-    bridge.app_shortcut_changed.connect(hotkey_mgr.register_shortcut)
-
     # System tray
     tray = TrayIcon(main_window)
     tray.show()
 
-    # Show main window (unless --hide was passed)
+    # Show main window immediately (unless --hide was passed)
     if "--hide" not in args:
         main_window.show()
+
+    # -----------------------------------------------------------------
+    # Background bootstrap of backend services
+    # -----------------------------------------------------------------
+    import threading
+
+    hotkey_mgr = None
+
+    def on_backend_initialized(app_controller):
+        if app_controller is None:
+            # Emit ready anyway so UI is not permanently locked on error
+            bridge.is_ready = True
+            bridge.app_ready.emit()
+            return
+
+        bridge.set_controller(app_controller)
+
+        # Position window on the configured monitor
+        main_window._position_at_bottom_center()
+
+        # Setup the global hotkey listener on the main thread
+        from src.infrastructure.global_shortcut import GlobalHotkeyManager
+        nonlocal hotkey_mgr
+        hotkey_mgr = GlobalHotkeyManager()
+
+        def toggle_app_visibility():
+            if main_window.isVisible():
+                main_window.hide()
+                settings_window.hide()
+            else:
+                main_window.show()
+                main_window.raise_()
+                main_window.activateWindow()
+
+        hotkey_mgr.activated.connect(toggle_app_visibility, Qt.QueuedConnection)
+
+        # Load and register initial app shortcut
+        app_config = app_controller.get_app_config()
+        initial_shortcut = app_config.get("appShortcut", "Ctrl+Alt+M")
+        if initial_shortcut:
+            hotkey_mgr.register_shortcut(initial_shortcut)
+
+        # Listen for shortcut changes from settings UI
+        bridge.app_shortcut_changed.connect(hotkey_mgr.register_shortcut)
+
+        # Mark ready and notify the UI
+        bridge.is_ready = True
+        bridge.app_ready.emit()
+        logger.info("Main thread: Backend linked and hotkeys registered. App is ready.")
+
+    bridge.backend_initialized.connect(on_backend_initialized)
+
+    def _bg_bootstrap():
+        try:
+            logger.info("Background thread: Initializing backend services...")
+            from src.core.settings_manager import SettingsManager
+            from src.infrastructure.audio_service import AudioService
+            from src.core.history_manager import HistoryManager
+            from src.infrastructure.kokoro import KokoroTTSProvider
+            from src.core.hotkey_manager import HotkeyManager
+            from src.core.app_controller import AppController
+
+            settings_manager = SettingsManager()
+            audio_service = AudioService()
+            history_manager = HistoryManager(audio_service, settings_manager)
+            tts_provider = KokoroTTSProvider(settings_manager, audio_service, history_manager)
+            hotkey_manager = HotkeyManager(tts_provider, audio_service, settings_manager)
+            hotkey_manager.init()
+
+            # Initialize app config on disk
+            settings_manager.get_app_config()
+
+            app_controller = AppController(
+                tts_provider, settings_manager, audio_service, hotkey_manager, history_manager
+            )
+
+            # 1. Preload TTS model (imports ONNX and parses model)
+            logger.info("Background thread: Preloading TTS model...")
+            tts_provider.preload_model()
+
+            # 2. Pre-initialize sounddevice
+            logger.info("Background thread: Pre-initializing audio service...")
+            try:
+                import sounddevice as sd
+                sd.query_devices()
+            except Exception as e:
+                logger.warning(f"Failed to query sound devices in background: {e}")
+
+            logger.info("Background thread: Backend initialization complete. Signaling main thread.")
+            bridge.backend_initialized.emit(app_controller)
+        except Exception as e:
+            logger.error(f"Error in background initialization: {e}", exc_info=True)
+            bridge.backend_initialized.emit(None)
+
+    # Launch background thread
+    threading.Thread(target=_bg_bootstrap, daemon=True).start()
 
     # -----------------------------------------------------------------
     # Handle commands from second instances
@@ -210,7 +255,8 @@ def main():
     # Run event loop
     # -----------------------------------------------------------------
     exit_code = app.exec()
-    hotkey_mgr.unregister()
+    if hotkey_mgr:
+        hotkey_mgr.unregister()
     local_server.close()
     sys.exit(exit_code)
 

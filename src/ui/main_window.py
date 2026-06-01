@@ -123,6 +123,7 @@ class MainWindow(QMainWindow):
     def showEvent(self, event):
         super().showEvent(event)
         self._web_view.setFocus()
+        self._web_view.page().runJavaScript("if (typeof checkReadiness === 'function') checkReadiness();")
 
     def changeEvent(self, event):
         if event.type() == QEvent.Type.ActivationChange:

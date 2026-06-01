@@ -166,3 +166,5 @@ class AppController:
     def clear_hotkeys(self) -> None:
         """Clear all hotkeys."""
         self._hotkey_manager.clear_hotkeys()
+
+

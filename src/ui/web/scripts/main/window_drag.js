@@ -4,6 +4,7 @@ let isDragging = false;
 let dragStartX = 0, dragStartY = 0;
 
 dragArea.addEventListener('mousedown', (e) => {
+    if (dragArea.classList.contains('disabled')) return;
     isDragging = true;
     dragStartX = e.screenX;
     dragStartY = e.screenY;

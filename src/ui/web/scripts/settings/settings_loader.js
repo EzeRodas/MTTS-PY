@@ -193,5 +193,13 @@ async function loadSettings() {
 
 // Listen for connection
 window.addEventListener('bridgeReady', () => {
-    loadSettings();
+    if (api) {
+        api.isReady(function(ready) {
+            if (ready) {
+                loadSettings();
+            } else {
+                api.app_ready.connect(loadSettings);
+            }
+        });
+    }
 });

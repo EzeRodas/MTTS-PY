@@ -20,3 +20,40 @@ if (aboutBtn) {
         if (api) api.openUrl(aboutBtn.href);
     });
 }
+
+function enableUI() {
+    const settingsBtn = document.getElementById('settingsBtn');
+    const submitBtn = document.getElementById('submitBtn');
+    const textArea = document.getElementById('textArea');
+    const dragArea = document.getElementById('dragArea');
+
+    if (settingsBtn) settingsBtn.removeAttribute('disabled');
+    if (submitBtn) submitBtn.removeAttribute('disabled');
+    if (textArea) {
+        textArea.removeAttribute('disabled');
+        textArea.setAttribute('placeholder', 'Enter text to synthesize...');
+    }
+    if (dragArea) dragArea.classList.remove('disabled');
+}
+
+window.checkReadiness = function() {
+    if (api) {
+        api.isReady(function(ready) {
+            if (ready) {
+                enableUI();
+            }
+        });
+    }
+};
+
+window.addEventListener('bridgeReady', () => {
+    if (api) {
+        api.isReady(function(ready) {
+            if (ready) {
+                enableUI();
+            } else {
+                api.app_ready.connect(enableUI);
+            }
+        });
+    }
+});

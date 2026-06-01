@@ -15,10 +15,6 @@ import subprocess
 import threading
 from typing import Any
 
-import numpy as np
-import sounddevice as sd
-import soundfile as sf
-
 logger = logging.getLogger("Moon-TTS.AudioService")
 
 
@@ -63,6 +59,7 @@ class AudioService:
 
     @staticmethod
     def _perform_query() -> list[dict[str, Any]]:
+        import sounddevice as sd
         devices: list[dict[str, Any]] = [
             {"id": "default", "name": "System Default"},
         ]
@@ -243,6 +240,10 @@ class AudioService:
 
         # Fallback (Linux defaults) or primary (macOS/Windows) sounddevice playback
         try:
+            import numpy as np
+            import sounddevice as sd
+            import soundfile as sf
+
             data, samplerate = sf.read(file_path, dtype="float32")
             
             # Resolve device ID to integer for PortAudio
@@ -278,8 +279,8 @@ class AudioService:
                 logger.debug("Converting mono stream to stereo for device compatibility.")
                 data = np.column_stack((data, data))
 
-            # Play with higher latency settings for stability on virtual cables/WASAPI
-            sd.play(data * volume, samplerate=samplerate, device=resolved_dev, latency="high")
+            # Play on target device
+            sd.play(data * volume, samplerate=samplerate, device=resolved_dev)
             sd.wait()
         except Exception as e:
             logger.error(f"sounddevice playback failed: {e}")

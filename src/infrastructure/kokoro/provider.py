@@ -12,9 +12,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import soundfile as sf
-from kokoro_onnx import Kokoro
-
 from .language_map import get_language_for_voice
 
 logger = logging.getLogger(__name__)
@@ -76,7 +73,7 @@ class KokoroTTSProvider:
         self.audio_service = audio_service
         self.history_manager = history_manager
 
-        self.tts_instance: Kokoro | None = None
+        self.tts_instance: Any = None
 
         self.kokoro_config: dict[str, Any] = self.settings_manager.get_engine_config(
             "kokoro",
@@ -85,22 +82,13 @@ class KokoroTTSProvider:
                 "speed": 1.0,
             }
         )
-        self.preload_model()
 
     def preload_model(self) -> None:
-        """Preload the TTS model in a background thread to speed up startup."""
-        import threading
-        
-        def _load():
-            try:
-                logger.info("Preloading TTS model in background thread...")
-                self._get_tts_instance()
-                logger.info("TTS model preloaded successfully.")
-            except Exception as e:
-                logger.error(f"Error preloading TTS model: {e}")
-
-        thread = threading.Thread(target=_load, daemon=True)
-        thread.start()
+        """Synchronously load the TTS model (designed to be run in a background thread)."""
+        try:
+            self._get_tts_instance()
+        except Exception as e:
+            logger.error(f"Error preloading TTS model: {e}")
 
     # ------------------------------------------------------------------
     # Lazy model loading
@@ -147,7 +135,7 @@ class KokoroTTSProvider:
         m, v = self._resolve_model_paths()
         return m is not None and v is not None
 
-    def _get_tts_instance(self) -> Kokoro:
+    def _get_tts_instance(self) -> Any:
         """Return the lazily-loaded :class:`Kokoro` instance from local files.
 
         Looks for the ONNX model and voice pack in search paths.
@@ -163,6 +151,7 @@ class KokoroTTSProvider:
                 "in configured or default directories."
             )
 
+        from kokoro_onnx import Kokoro
         self.tts_instance = Kokoro(str(model_path), str(voices_path))
         return self.tts_instance
 
@@ -237,6 +226,7 @@ class KokoroTTSProvider:
         os.close(tmp_fd)
 
         try:
+            import soundfile as sf
             sf.write(tmp_path, samples, sample_rate)
 
             # Record in history (best-effort).
