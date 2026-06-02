@@ -72,20 +72,49 @@ class DictionaryManager:
         return False
 
     def replace_text(self, text: str) -> str:
-        for entry in self._entries:
+        if not self._entries or not text:
+            return text
+
+        parts = []
+        # Iterate in reverse order so later entries take precedence over earlier ones
+        for i in range(len(self._entries) - 1, -1, -1):
+            entry = self._entries[i]
             original = entry.get("original", "")
-            spelling = entry.get("spelling", "")
             if not original:
                 continue
                 
             escaped = re.escape(original)
-            # Use regex with word boundaries
-            pattern_str = r'\b' + escaped + r'\b'
+            if entry.get("case_sensitive", False):
+                flag = "(?-i:"
+            else:
+                flag = "(?i:"
             
-            flags = 0 if entry.get("case_sensitive", False) else re.IGNORECASE
-            try:
-                text = re.sub(pattern_str, spelling, text, flags=flags)
-            except Exception as e:
-                logger.error(f"Regex error for {original}: {e}")
-                
+            # Using named capture group to map back to the entry
+            parts.append(f"(?P<r{i}>{flag}\\b{escaped}\\b))")
+            
+        if not parts:
+            return text
+            
+        pattern_str = "|".join(parts)
+        try:
+            pattern = re.compile(pattern_str)
+        except Exception as e:
+            logger.error(f"Error compiling dictionary regex: {e}")
+            return text
+
+        def replacer(match):
+            group_name = match.lastgroup
+            if group_name and group_name.startswith("r"):
+                try:
+                    idx = int(group_name[1:])
+                    return self._entries[idx].get("spelling", "")
+                except (ValueError, IndexError):
+                    pass
+            return match.group(0)
+
+        try:
+            text = pattern.sub(replacer, text)
+        except Exception as e:
+            logger.error(f"Error applying dictionary replacements: {e}")
+            
         return text

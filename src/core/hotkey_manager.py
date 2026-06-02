@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 # Type alias for hotkey entry dicts
-HotkeyEntry = dict[str, Any]  # keys: id (int), text (str), hotkey (str)
+HotkeyEntry = dict[str, Any]  # keys: id (str), text (str), hotkey (str)
 
 
 class HotkeyManager:
@@ -52,6 +52,11 @@ class HotkeyManager:
         self._json_path: Path = self._hotkeyed_dir / "hotkeys.json"
 
         self.entries: list[HotkeyEntry] = []
+        self._on_hotkeys_changed_callback = None
+
+    def set_hotkeys_changed_callback(self, callback) -> None:
+        """Set a callback to be invoked when hotkeys change."""
+        self._on_hotkeys_changed_callback = callback
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -59,8 +64,20 @@ class HotkeyManager:
 
     def init(self) -> None:
         """Create the hotkeyed directory if needed and load entries."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         os.makedirs(self._hotkeyed_dir, exist_ok=True)
         self.entries = self._load_entries()
+        
+        # If entries is empty but there are files, clear legacy/orphaned WAVs
+        if not self.entries:
+            for file in os.listdir(self._hotkeyed_dir):
+                if file.endswith(".wav"):
+                    try:
+                        os.remove(self._hotkeyed_dir / file)
+                    except Exception as e:
+                        logger.debug(f"Failed to remove orphaned hotkey wav {file}: {e}")
 
     # ------------------------------------------------------------------
     # Public API
@@ -86,7 +103,8 @@ class HotkeyManager:
         else:
             if len(self.entries) >= self.MAX_ENTRIES:
                 return  # cap reached
-            entry_id = len(self.entries)
+            import uuid
+            entry_id = uuid.uuid4().hex[:8]
             self.entries.append({"id": entry_id, "text": text, "hotkey": hotkey})
 
         # Generate audio file
@@ -94,12 +112,15 @@ class HotkeyManager:
         self._tts_service.generate_to_file(text, wav_path)
 
         self._save_entries()
+        
+        if self._on_hotkeys_changed_callback:
+            self._on_hotkeys_changed_callback()
 
-    def play_hotkey(self, entry_id: int) -> None:
+    def play_hotkey(self, entry_id: str) -> None:
         """Play the audio bound to a hotkey entry.
 
         Args:
-            entry_id: Zero-based index of the hotkey entry.
+            entry_id: String UUID of the hotkey entry.
         """
         wav = self._wav_path(entry_id)
         if not os.path.exists(wav):
@@ -108,13 +129,15 @@ class HotkeyManager:
         config = self._settings_manager.get_app_config()
         self._audio_service.play(str(wav), config)
 
-    def delete_hotkey(self, entry_id: int) -> None:
-        """Delete a hotkey entry, shift subsequent IDs down, and rename files.
+    def delete_hotkey(self, entry_id: str) -> None:
+        """Delete a hotkey entry and its corresponding file.
 
         Args:
-            entry_id: Zero-based index of the entry to remove.
+            entry_id: String UUID of the entry to remove.
         """
-        if entry_id < 0 or entry_id >= len(self.entries):
+        # Find index of entry
+        idx = next((i for i, e in enumerate(self.entries) if e["id"] == entry_id), -1)
+        if idx == -1:
             return
 
         # Remove the WAV file for the deleted entry
@@ -123,27 +146,25 @@ class HotkeyManager:
             os.remove(target)
 
         # Remove entry from list
-        self.entries.pop(entry_id)
-
-        # Shift subsequent files and reassign IDs
-        for i in range(entry_id, len(self.entries)):
-            old_path = self._wav_path(i + 1)
-            new_path = self._wav_path(i)
-            if os.path.exists(old_path):
-                os.rename(old_path, new_path)
-            self.entries[i]["id"] = i
+        self.entries.pop(idx)
 
         self._save_entries()
+        
+        if self._on_hotkeys_changed_callback:
+            self._on_hotkeys_changed_callback()
 
     def clear_hotkeys(self) -> None:
         """Remove all hotkey entries and their audio files."""
-        for i in range(len(self.entries)):
-            wav = self._wav_path(i)
+        for entry in self.entries:
+            wav = self._wav_path(entry["id"])
             if os.path.exists(wav):
                 os.remove(wav)
 
         self.entries.clear()
         self._save_entries()
+        
+        if self._on_hotkeys_changed_callback:
+            self._on_hotkeys_changed_callback()
 
     def list_hotkeys(self) -> list[HotkeyEntry]:
         """Return a copy of all current hotkey entries.
@@ -157,16 +178,16 @@ class HotkeyManager:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _wav_path(self, entry_id: int) -> Path:
+    def _wav_path(self, entry_id: str) -> Path:
         """Return the WAV file path for an entry.
 
         Args:
-            entry_id: Entry slot number.
+            entry_id: String UUID of the entry.
 
         Returns:
-            Full path to ``hotkey_{entry_id}.wav``.
+            Full path to ``phrase_{entry_id}.wav``.
         """
-        return self._hotkeyed_dir / f"hotkey_{entry_id}.wav"
+        return self._hotkeyed_dir / f"phrase_{entry_id}.wav"
 
     def _load_entries(self) -> list[HotkeyEntry]:
         """Read hotkeys.json and return the entry list.
@@ -179,7 +200,14 @@ class HotkeyManager:
         try:
             with open(self._json_path, "r", encoding="utf-8") as fh:
                 data = json.load(fh)
-                return data if isinstance(data, list) else []
+                if not isinstance(data, list):
+                    return []
+                
+                # Drop legacy integer-based IDs
+                if any(isinstance(e.get("id"), int) for e in data):
+                    return []
+                    
+                return data
         except (json.JSONDecodeError, ValueError):
             return []
 

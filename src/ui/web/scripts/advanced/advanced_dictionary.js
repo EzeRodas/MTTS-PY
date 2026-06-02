@@ -22,14 +22,40 @@ function loadDictionaryTab() {
             return;
         }
         
-        api.addDictionaryEntry(original, spelling, isCaseSensitive, (success) => {
-            if (success) {
-                origInput.value = '';
-                spellInput.value = '';
-                caseCheck.checked = false;
-                refreshDictionaryList();
+        api.getDictionary((dictJson) => {
+            let entries = [];
+            try {
+                entries = JSON.parse(dictJson);
+            } catch (e) {}
+
+            const duplicateIndex = entries.findIndex(e => e.original === original && e.case_sensitive === isCaseSensitive);
+
+            if (duplicateIndex !== -1) {
+                showConfirm('Duplicate Entry', `An entry for "${original}" with matching case sensitivity already exists. Do you want to replace it?`, () => {
+                    api.updateDictionaryEntry(duplicateIndex, original, spelling, isCaseSensitive, (success) => {
+                        if (success) {
+                            origInput.value = '';
+                            spellInput.value = '';
+                            caseCheck.checked = false;
+                            refreshDictionaryList();
+                            showToast('Entry replaced successfully', 'success');
+                        } else {
+                            showToast('Failed to replace entry', 'error');
+                        }
+                    });
+                });
             } else {
-                showToast('Failed to add entry. Dictionary might be full (max 500).', 'error');
+                api.addDictionaryEntry(original, spelling, isCaseSensitive, (success) => {
+                    if (success) {
+                        origInput.value = '';
+                        spellInput.value = '';
+                        caseCheck.checked = false;
+                        refreshDictionaryList();
+                        showToast('Entry added successfully', 'success');
+                    } else {
+                        showToast('Failed to add entry. Dictionary might be full (max 500).', 'error');
+                    }
+                });
             }
         });
     });

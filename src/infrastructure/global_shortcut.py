@@ -153,17 +153,19 @@ def to_portal_shortcut(qt_shortcut: str) -> str:
 class DBusLoopRunner:
     """Manages an asyncio loop in a separate thread for dbus-next portal interaction."""
 
-    def __init__(self, activated_callback, fallback_callback, bound_callback=None) -> None:
+    def __init__(self, activated_callback, fallback_callback, bound_callback=None, phrase_activated_callback=None) -> None:
         self.activated_callback = activated_callback
         self.fallback_callback = fallback_callback
         self.bound_callback = bound_callback
+        self.phrase_activated_callback = phrase_activated_callback
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.thread: Optional[threading.Thread] = None
         self.bus: Optional[MessageBus] = None
         self.session_proxy = None
         self.shortcuts_interface = None
         self.session_handle: Optional[str] = None
-        self.last_trigger_str = None
+        self.last_toggle_trigger_str = None
+        self.last_phrases_hash = None
         self._is_running = False
 
     def start(self) -> None:
@@ -209,22 +211,17 @@ class DBusLoopRunner:
             self.bus = None
         self.session_handle = None
 
-    def register_shortcut(self, trigger_str: str) -> None:
+    def register_all_shortcuts(self, toggle_trigger: str, phrases: list[dict]) -> None:
         if self.loop:
-            asyncio.run_coroutine_threadsafe(self._register(trigger_str), self.loop)
+            asyncio.run_coroutine_threadsafe(self._register_all(toggle_trigger, phrases), self.loop)
 
-    async def _register(self, trigger_str: str) -> None:
+    async def _register_all(self, toggle_trigger: str, phrases: list[dict]) -> None:
         try:
-            # Check if the trigger has changed. If so, close the old session to force a fresh re-bind prompt.
-            if self.session_handle and self.last_trigger_str != trigger_str:
-                logger.info(f"Shortcut changed from '{self.last_trigger_str}' to '{trigger_str}'. Closing existing session to trigger re-prompt.")
-                if self.session_proxy:
-                    try:
-                        await self.session_proxy.call_close()
-                    except Exception as e:
-                        logger.debug(f"Error closing D-Bus portal session: {e}")
-                    self.session_proxy = None
-                self.session_handle = None
+            # Hash to detect if we need to log changes
+            import json
+            phrases_hash = hashlib.md5(json.dumps(phrases, sort_keys=True).encode('utf-8')).hexdigest()
+            if self.session_handle and (self.last_toggle_trigger_str != toggle_trigger or self.last_phrases_hash != phrases_hash):
+                logger.info("Shortcuts changed. Re-binding with existing DBus session.")
 
             # 1. Connect message bus if not already connected
             if not self.bus:
@@ -269,6 +266,12 @@ class DBusLoopRunner:
                 def on_activated(session, shortcut_id, timestamp, options):
                     if shortcut_id.startswith("toggle_app_visibility"):
                         self.activated_callback()
+                    elif shortcut_id.startswith("moon_tts_phrase_"):
+                        parts = shortcut_id.split("_")
+                        if len(parts) >= 4:
+                            phrase_id = parts[3]
+                            if self.phrase_activated_callback:
+                                self.phrase_activated_callback(phrase_id)
 
                 self.shortcuts_interface.on_activated(on_activated)
 
@@ -309,21 +312,40 @@ class DBusLoopRunner:
                 sess_obj = self.bus.get_proxy_object("org.freedesktop.portal.Desktop", self.session_handle, sess_intro)
                 self.session_proxy = sess_obj.get_interface("org.freedesktop.portal.Session")
 
-            # Generate a shortcut ID based on a hash of the trigger string
-            # to prevent the desktop environment from using a cached shortcut mapping.
-            trigger_hash = hashlib.md5(trigger_str.encode('utf-8')).hexdigest()[:8]
-            shortcut_id = f"toggle_app_visibility_{trigger_hash}"
-
             # 4. BindShortcuts (always call this to register or update the shortcut trigger)
-            shortcuts = [
-                [
+            shortcuts = []
+            
+            # Add Toggle Shortcut
+            if toggle_trigger:
+                trigger_hash = hashlib.md5(toggle_trigger.encode('utf-8')).hexdigest()[:8]
+                shortcut_id = f"toggle_app_visibility_{trigger_hash}"
+                shortcuts.append([
                     shortcut_id,
                     {
                         "description": Variant("s", "Show/Hide Moon-TTS"),
-                        "preferred_trigger": Variant("s", trigger_str)
+                        "preferred_trigger": Variant("s", toggle_trigger)
                     }
-                ]
-            ]
+                ])
+                
+            # Add Phrase Shortcuts
+            for phrase in phrases:
+                pid = phrase["id"]
+                ptrigger = phrase["trigger"]
+                ptext = phrase.get("text", "")
+                if ptrigger:
+                    phash = hashlib.md5(ptrigger.encode('utf-8')).hexdigest()[:8]
+                    # Format description: first 15 chars + "..." if longer
+                    desc_text = ptext[:15] + ("..." if len(ptext) > 15 else "")
+                    if not desc_text:
+                        desc_text = f"Phrase {pid[:4]}"
+                    
+                    shortcuts.append([
+                        f"moon_tts_phrase_{pid}_{phash}",
+                        {
+                            "description": Variant("s", desc_text),
+                            "preferred_trigger": Variant("s", ptrigger)
+                        }
+                    ])
             
             # Generate a fresh, unique bind handle token for this request
             import uuid
@@ -356,15 +378,16 @@ class DBusLoopRunner:
             bind_req_interface.on_response(on_bind_response)
 
             bind_res = await asyncio.wait_for(bind_resp_future, timeout=10.0)
-            self.last_trigger_str = trigger_str
-            logger.info(f"Registered portal global shortcut: '{trigger_str}'")
+            self.last_toggle_trigger_str = toggle_trigger
+            self.last_phrases_hash = phrases_hash
+            logger.info(f"Registered portal global shortcuts: toggle='{toggle_trigger}', phrases={len(phrases)}")
 
-            # Extract actual bound shortcut from response
+            # Extract actual bound shortcut from response for the toggle trigger
             actual_shortcut = None
-            if "shortcuts" in bind_res:
+            if "shortcuts" in bind_res and toggle_trigger:
                 shortcuts_val = bind_res["shortcuts"].value
                 for shortcut_tuple in shortcuts_val:
-                    if len(shortcut_tuple) >= 2 and shortcut_tuple[0] == shortcut_id:
+                    if len(shortcut_tuple) >= 2 and shortcut_tuple[0].startswith("toggle_app_visibility_"):
                         props = shortcut_tuple[1]
                         if "trigger_description" in props:
                             actual_shortcut = props["trigger_description"].value
@@ -389,6 +412,7 @@ class GlobalHotkeyManager(QObject):
     """
 
     activated = Signal()
+    phrase_activated = Signal(str)
     fallback_needed = Signal(str)
     shortcut_bound = Signal(str)
 
@@ -399,9 +423,8 @@ class GlobalHotkeyManager(QObject):
         self._current_shortcut = ""
         self.fallback_needed.connect(self._register_pynput)
 
-    def register_shortcut(self, qt_shortcut: str) -> None:
-        """Register a new global shortcut, unregistering any prior binding."""
-        # Unregister the pynput listener only so we don't start duplicate pynput hooks
+    def register_all_shortcuts(self, toggle_trigger: str, phrases: list[dict]) -> None:
+        """Register all global shortcuts, including the main app toggle and phrases."""
         if self._listener:
             try:
                 self._listener.stop()
@@ -409,26 +432,31 @@ class GlobalHotkeyManager(QObject):
                 logger.debug(f"Error stopping hotkey listener: {e}")
             self._listener = None
 
-        if not qt_shortcut:
-            return
-
-        self._current_shortcut = qt_shortcut
+        self._current_shortcut = toggle_trigger
 
         if HAS_DBUS and sys.platform.startswith("linux"):
-            trigger_str = to_portal_shortcut(qt_shortcut)
-            logger.info(f"Attempting to register portal shortcut: '{trigger_str}'")
+            portal_toggle = to_portal_shortcut(toggle_trigger) if toggle_trigger else ""
+            portal_phrases = []
+            for phrase in phrases:
+                if phrase.get("hotkey"):
+                    portal_phrases.append({
+                        "id": phrase["id"],
+                        "trigger": to_portal_shortcut(phrase["hotkey"]),
+                        "text": phrase.get("text", "")
+                    })
 
             if not self._dbus_runner:
                 self._dbus_runner = DBusLoopRunner(
                     activated_callback=self.activated.emit,
                     fallback_callback=self._on_dbus_fallback,
-                    bound_callback=self._on_shortcut_bound
+                    bound_callback=self._on_shortcut_bound,
+                    phrase_activated_callback=self.phrase_activated.emit
                 )
                 self._dbus_runner.start()
 
-            self._dbus_runner.register_shortcut(trigger_str)
+            self._dbus_runner.register_all_shortcuts(portal_toggle, portal_phrases)
         else:
-            self._register_pynput(qt_shortcut)
+            self._register_pynput(toggle_trigger)
 
     def _on_shortcut_bound(self, actual_shortcut: str) -> None:
         """Called when the portal successfully binds a shortcut, providing the actual bound string."""

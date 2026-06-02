@@ -85,14 +85,27 @@ class BootstrapReceiver(QObject):
 
                 hotkey_mgr.activated.connect(toggle_app_visibility, Qt.QueuedConnection)
 
-                # Load and register initial app shortcut
-                app_config = app_controller.get_app_config()
-                initial_shortcut = app_config.get("appShortcut", "Ctrl+Alt+M")
-                if initial_shortcut:
-                    hotkey_mgr.register_shortcut(initial_shortcut)
+                def update_all_shortcuts(new_app_shortcut: str = None):
+                    app_config = app_controller.get_app_config()
+                    toggle_shortcut = new_app_shortcut if new_app_shortcut is not None else app_config.get("appShortcut", "Ctrl+Alt+M")
+                    
+                    phrases = app_controller.list_hotkeys()
+                    hotkey_mgr.register_all_shortcuts(toggle_shortcut, phrases)
+
+                # Connect phrase activation
+                hotkey_mgr.phrase_activated.connect(app_controller.play_hotkey, Qt.QueuedConnection)
+
+                # Wire up hotkeys_changed callback from AppController
+                app_controller.set_hotkeys_changed_callback(update_all_shortcuts)
+
+                # Load and register initial shortcuts
+                update_all_shortcuts()
 
                 # Listen for shortcut changes from settings UI
-                self.bridge.app_shortcut_changed.connect(hotkey_mgr.register_shortcut)
+                def on_app_shortcut_changed(shortcut):
+                    update_all_shortcuts(new_app_shortcut=shortcut)
+                    
+                self.bridge.app_shortcut_changed.connect(on_app_shortcut_changed)
                 
                 def handle_shortcut_bound(actual_shortcut: str):
                     logger.info(f"Main thread: shortcut bound by OS: {actual_shortcut}")
@@ -232,8 +245,14 @@ def main():
     tray = TrayIcon(main_window)
     tray.show()
 
-    # Show main window immediately (unless --hide was passed)
-    if "--hide" not in args:
+    # Quick parse to check startMinimized
+    from src.core.settings_manager import SettingsManager
+    sm = SettingsManager()
+    config = sm.get_app_config()
+    start_minimized = config.get("startMinimized", False)
+
+    # Show main window immediately (unless --hide was passed or start_minimized is true)
+    if "--hide" not in args and not start_minimized:
         main_window.show()
 
     # -----------------------------------------------------------------

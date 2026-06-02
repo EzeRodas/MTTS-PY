@@ -16,6 +16,37 @@ function loadGeneralTab() {
             });
         }
 
+        // Start Minimized toggle
+        const startMinCb = document.getElementById('advStartMinimizedCheckbox');
+        if (startMinCb) {
+            const newStartMinCb = startMinCb.cloneNode(true);
+            startMinCb.parentNode.replaceChild(newStartMinCb, startMinCb);
+            newStartMinCb.checked = !!config.startMinimized; // defaults to false
+            newStartMinCb.addEventListener('change', () => {
+                api.updateAppConfig(JSON.stringify({startMinimized: newStartMinCb.checked}));
+            });
+        }
+
+        // Open on Startup toggle (Windows only)
+        // We'll need the platform from the backend to know if we should show it.
+        api.getSystemInfo && api.getSystemInfo(function(sysInfoJson) {
+            const sysInfo = JSON.parse(sysInfoJson);
+            if (sysInfo.platform === 'win32') {
+                const container = document.getElementById('advOpenOnStartupContainer');
+                if (container) container.style.display = 'flex';
+                
+                const openStartCb = document.getElementById('advOpenOnStartupCheckbox');
+                if (openStartCb) {
+                    const newOpenStartCb = openStartCb.cloneNode(true);
+                    openStartCb.parentNode.replaceChild(newOpenStartCb, openStartCb);
+                    newOpenStartCb.checked = !!config.openOnStartup; // defaults to false
+                    newOpenStartCb.addEventListener('change', () => {
+                        api.updateAppConfig(JSON.stringify({openOnStartup: newOpenStartCb.checked}));
+                    });
+                }
+            }
+        });
+
         // Monitors / Screens list
         if (typeof api.getScreens === 'function') {
             api.getScreens(function(screensJson) {

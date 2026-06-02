@@ -243,14 +243,14 @@ function refreshHotkeysList() {
             const playBtn = document.createElement('button');
             playBtn.className = 'btn-secondary';
             playBtn.textContent = 'Play';
-            playBtn.addEventListener('click', () => api.playHotkey(index));
+            playBtn.addEventListener('click', () => api.playHotkey(hk.id));
 
             const delBtn = document.createElement('button');
             delBtn.className = 'btn-secondary';
             delBtn.style.color = '#ef4444';
             delBtn.textContent = 'Delete';
             delBtn.addEventListener('click', () => {
-                api.deleteHotkey(index);
+                api.deleteHotkey(hk.id);
                 setTimeout(refreshHotkeysList, 100);
             });
 

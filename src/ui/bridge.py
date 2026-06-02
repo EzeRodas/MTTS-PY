@@ -108,11 +108,17 @@ class Bridge(QObject):
     # =========================================================================
 
     @Slot(result=str)
-    def getAppConfig(self) -> str:
-        """Return the full app config as a JSON string."""
+    def getAppConfig(self):
+        """Invoked by UI to get application configuration."""
         if self._controller:
             return json.dumps(self._controller.get_app_config())
         return "{}"
+
+    @Slot(result=str)
+    def getSystemInfo(self):
+        """Invoked by UI to get OS information."""
+        import sys
+        return json.dumps({"platform": sys.platform})
 
     @Slot(str)
     def updateAppConfig(self, config_json: str):
@@ -312,15 +318,15 @@ class Bridge(QObject):
         if self._controller:
             self._controller.assign_hotkey(hotkey, text)
 
-    @Slot(int)
-    def playHotkey(self, hotkey_id: int):
-        """Play a hotkeyed phrase by ID."""
+    @Slot(str)
+    def playHotkey(self, hotkey_id: str) -> None:
+        """Invoked by UI to play a saved hotkey phrase."""
         if self._controller:
             self._controller.play_hotkey(hotkey_id)
 
-    @Slot(int)
-    def deleteHotkey(self, hotkey_id: int):
-        """Delete a hotkey mapping by ID."""
+    @Slot(str)
+    def deleteHotkey(self, hotkey_id: str) -> None:
+        """Invoked by UI to delete a saved hotkey phrase."""
         if self._controller:
             self._controller.delete_hotkey(hotkey_id)
 

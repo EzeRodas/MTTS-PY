@@ -39,6 +39,27 @@
                 </div>
 
                 <div class="settings-section adv-section">
+                    <!-- Open on startup -->
+                    <div class="settings-row" id="advOpenOnStartupContainer" style="display: none;">
+                        <h4>Open on startup (Only Windows)</h4>
+                        <label class="toggle-label">
+                            <input type="checkbox" class="toggle-input" id="advOpenOnStartupCheckbox">
+                            <div class="toggle-track"></div>
+                            <span class="toggle-dot"></span>
+                        </label>
+                    </div>
+                    <!-- Start minimized -->
+                    <div class="settings-row mt-3">
+                        <h4>Start minimized to tray</h4>
+                        <label class="toggle-label">
+                            <input type="checkbox" class="toggle-input" id="advStartMinimizedCheckbox">
+                            <div class="toggle-track"></div>
+                            <span class="toggle-dot"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-section adv-section">
                     <!-- Hide on enter -->
                     <div class="settings-row">
                         <h4>Hide window after synthesizing</h4>
@@ -164,7 +185,7 @@
             <div id="hotkeys" class="category-panel">
                 <div>
                     <h2>Global Hotkeys</h2>
-                    <div class="panel-description">Map global key combos to synthesize pre-defined phrases.</div>
+                    <div class="panel-description">Map global key combos to synthesize pre-defined phrases.<br> There can be a maximum of 20 entries.</div>
                 </div>
 
                 <div class="form-group">
@@ -197,7 +218,7 @@
                 <div class="adv-history-header">
                     <div>
                         <h2>Synthesis History</h2>
-                        <div class="panel-description">Review and replay recently generated audio files.</div>
+                        <div class="panel-description">Review and replay recently generated audio files.<br> Only the last 20 entries will be saved.</div>
                     </div>
                     <button id="clearHistoryBtn" class="btn-danger">Clear All</button>
                 </div>

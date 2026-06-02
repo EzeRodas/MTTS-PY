@@ -59,6 +59,7 @@ class SettingsWindow(QMainWindow):
 
         # Web engine view
         self._web_view = QWebEngineView(self)
+        self._web_view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self._web_view.setPage(ConsoleWebEnginePage(self._web_view))
         self._web_view.setStyleSheet("background: transparent;")
         self._web_view.page().setBackgroundColor(Qt.GlobalColor.transparent)

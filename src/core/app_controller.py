@@ -120,6 +120,43 @@ class AppController:
         """Update partial app configuration."""
         self._settings_manager.update_app_config(config)
 
+        if "openOnStartup" in config:
+            import sys
+            if sys.platform == "win32":
+                self._handle_windows_startup(config["openOnStartup"])
+
+    def _handle_windows_startup(self, enable: bool) -> None:
+        try:
+            import winreg
+            import sys
+            from pathlib import Path
+            
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER, 
+                r"Software\Microsoft\Windows\CurrentVersion\Run", 
+                0, 
+                winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE
+            )
+            
+            app_name = "MoonTTS"
+            
+            if enable:
+                main_script = Path(sys.argv[0]).resolve()
+                if main_script.suffix == ".py":
+                    cmd = f'"{sys.executable}" "{main_script}"'
+                else:
+                    cmd = f'"{sys.executable}"'
+                
+                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, cmd)
+            else:
+                try:
+                    winreg.DeleteValue(key, app_name)
+                except FileNotFoundError:
+                    pass
+            winreg.CloseKey(key)
+        except Exception as e:
+            logger.error(f"Failed to set Windows startup registry: {e}")
+
     # =========================================================================
     # Audio Devices
     # =========================================================================
@@ -152,6 +189,10 @@ class AppController:
     # Hotkeys
     # =========================================================================
 
+    def set_hotkeys_changed_callback(self, callback) -> None:
+        """Set a callback to be invoked when hotkeys change."""
+        self._hotkey_manager.set_hotkeys_changed_callback(callback)
+
     def list_hotkeys(self) -> list[dict]:
         """Return assigned hotkey entries."""
         return self._hotkey_manager.list_hotkeys()
@@ -160,12 +201,12 @@ class AppController:
         """Assign a hotkey to a phrase."""
         self._hotkey_manager.assign_hotkey(hotkey, text)
 
-    def play_hotkey(self, hotkey_id: int) -> None:
-        """Play a hotkeyed phrase."""
+    def play_hotkey(self, hotkey_id: str) -> None:
+        """Play a saved hotkey phrase."""
         self._hotkey_manager.play_hotkey(hotkey_id)
 
-    def delete_hotkey(self, hotkey_id: int) -> None:
-        """Delete a hotkey entry."""
+    def delete_hotkey(self, hotkey_id: str) -> None:
+        """Delete a saved hotkey phrase."""
         self._hotkey_manager.delete_hotkey(hotkey_id)
 
     def clear_hotkeys(self) -> None:
