@@ -58,4 +58,10 @@ class TrayIcon(QSystemTrayIcon):
         app = QApplication.instance()
         if app:
             app.setProperty("is_quitting", True)
+            
+        for widget in QApplication.topLevelWidgets():
+            widget.close()
+            
         QApplication.quit()
+        import sys
+        sys.exit(0)

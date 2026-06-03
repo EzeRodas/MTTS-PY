@@ -13,11 +13,11 @@
             <button class="nav-item" onclick="switchTab('audio', this)">Audio</button>
             <button class="nav-item" onclick="switchTab('dictionary', this)">Dictionary</button>
             <button class="nav-item" onclick="switchTab('engine', this)">TTS Engine</button>
+            <button class="nav-item" onclick="switchTab('engineManagement', this)">Engine Management</button>
             <button class="nav-item" onclick="switchTab('hotkeys', this)">Hotkeys</button>
             <button class="nav-item" onclick="switchTab('history', this)">History</button>
             <div class="flex-spacer"></div>
             <button class="nav-item nav-item-back" id="backToQuickBtn">< Quick Settings</button>
-            <button class="nav-item nav-item-close" id="closeSettingsBtn">Close Settings</button>
             <button class="nav-item nav-item-close" id="exitAppBtn">Exit Moon-TTS</button>
         </div>
 
@@ -68,6 +68,84 @@
                             <div class="toggle-track"></div>
                             <span class="toggle-dot"></span>
                         </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Engine Management Content -->
+            <div id="engineManagement" class="category-panel">
+                <h2>Engine Management</h2>
+                <div class="settings-group">
+                    <div class="setting-item column-layout">
+                        <div class="setting-header">
+                            <span class="setting-name">Download or delete TTS Models for synthesis
+                                <br><br>
+                            </span>
+                        </div>
+                        
+                        <div class="engine-status-card" id="engineStatusCard">
+                            <h3 id="engineStatusTitle">Status: Unknown</h3>
+                            <p id="engineStatusDesc">Loading status...</p>
+                        </div>
+
+                        <div id="advEngineSelectionContainer" style="display: flex; flex-direction: column; width: 100%;">
+                            <div class="model-options">
+                                <label class="model-option selected">
+                                    <input type="radio" name="advEngineType" value="kokoro" checked>
+                                    <div class="model-info">
+                                        <span class="model-title">Kokoro TTS Engine</span>
+                                        <span class="model-desc">Compact and fast, highly natural sounding voices.</span>
+                                    </div>
+                                </label>
+                            </div>
+                            <div class="engine-actions">
+                                <button class="btn-engine btn-engine-sm btn-delete" id="btnEngineDelete" onclick="deleteEngineModel()">Delete Model</button>
+                                <button class="btn-engine btn-engine-sm btn-download" onclick="advSelectEngine()">Next ></button>
+                            </div>
+                        </div>
+
+                        <div id="advQualitySelectionContainer" style="display: none; flex-direction: column; width: 100%;">
+                            <p style="color: #4b5563; font-size: 14px; margin-bottom: 10px; margin-top: 0px; font-weight: 600;">Select the model quality for Kokoro:</p>
+                            <div class="model-options" id="engineModelOptions">
+                                <label class="model-option selected">
+                                    <input type="radio" name="engineModelQuality" value="fp32" checked>
+                                    <div class="model-info">
+                                        <span class="model-title">Kokoro FP32 (High Quality)</span>
+                                        <span class="model-desc">Highest fidelity, ~320MB. Recommended for modern PCs.</span>
+                                    </div>
+                                </label>
+                                <label class="model-option">
+                                    <input type="radio" name="engineModelQuality" value="fp16">
+                                    <div class="model-info">
+                                        <span class="model-title">Kokoro FP16 (Balanced) (Recommended)</span>
+                                        <span class="model-desc">Fast generation, ~160MB. Great middle ground.</span>
+                                    </div>
+                                </label>
+                                <label class="model-option">
+                                    <input type="radio" name="engineModelQuality" value="int8">
+                                    <div class="model-info">
+                                        <span class="model-title">Kokoro INT8 (Smallest)</span>
+                                        <span class="model-desc">Lowest VRAM usage, ~80MB. Best for older hardware.</span>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div class="progress-container" id="engineProgressContainer">
+                                <div class="model-title" id="engineProgressFile">Downloading...</div>
+                                <div class="progress-bar-bg">
+                                    <div class="progress-bar-fill" id="engineProgressBar"></div>
+                                </div>
+                                <div class="progress-text" id="engineProgressText">0 MB / 0 MB (0%)</div>
+                            </div>
+
+                            <div id="engineStatusMessage" class="status-message"></div>
+
+                            <div class="engine-actions">
+                                <button class="btn-engine btn-engine-sm btn-skip" style="color: #6b7280;" onclick="advBackToEngine()">< Back</button>
+                                <button class="btn-engine btn-engine-sm btn-delete" id="btnEngineDeleteSelected" onclick="deleteSelectedEngineModel()" style="display: none; margin-right: 10px;">Delete Model</button>
+                                <button class="btn-engine btn-engine-sm btn-download" id="btnEngineDownload" onclick="startEngineDownload()">Download & Install</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -237,5 +315,6 @@
     <script src="scripts/advanced/advanced_hotkeys.js"></script>
     <script src="scripts/advanced/advanced_history.js"></script>
     <script src="scripts/advanced/advanced_dictionary.js"></script>
+    <script src="scripts/advanced/advanced_engine_management.js"></script>
 </body>
 </html>

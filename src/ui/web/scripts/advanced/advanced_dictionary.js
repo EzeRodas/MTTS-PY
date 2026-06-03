@@ -92,6 +92,7 @@ function refreshDictionaryList() {
             const row1 = document.createElement('div');
             row1.style.display = 'flex';
             row1.style.gap = '10px';
+            row1.style.alignItems = 'center';
             
             const origInput = document.createElement('input');
             origInput.type = 'text';
@@ -106,6 +107,7 @@ function refreshDictionaryList() {
             spellInput.style.flex = '1';
             
             row1.appendChild(origInput);
+            row1.appendChild(document.createTextNode(' to: '));
             row1.appendChild(spellInput);
 
             // Row 2: Actions

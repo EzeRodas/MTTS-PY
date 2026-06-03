@@ -28,12 +28,41 @@ function enableUI() {
     const dragArea = document.getElementById('dragArea');
 
     if (settingsBtn) settingsBtn.removeAttribute('disabled');
-    if (submitBtn) submitBtn.removeAttribute('disabled');
-    if (textArea) {
-        textArea.removeAttribute('disabled');
-        textArea.setAttribute('placeholder', 'Enter text to synthesize...');
-    }
     if (dragArea) dragArea.classList.remove('disabled');
+}
+
+function initializeMainControl(api) {
+    if (!api) return;
+
+    // Check engine availability periodically
+    function checkEngineStatus() {
+        if (api.isEngineAvailable) {
+            api.isEngineAvailable(function(available) {
+                const textArea = document.getElementById('textArea');
+                const submitBtn = document.getElementById('submitBtn');
+                
+                if (!available) {
+                    if (textArea) {
+                        textArea.placeholder = "No TTS engine detected (Check Settings)";
+                        textArea.disabled = true;
+                    }
+                    if (submitBtn) submitBtn.disabled = true;
+                } else {
+                    if (textArea && textArea.disabled) {
+                        textArea.setAttribute('placeholder', 'Enter text to synthesize...');
+                        textArea.disabled = false;
+                        if (submitBtn) submitBtn.disabled = false;
+                    }
+                }
+            });
+        }
+    }
+    
+    // Initial check and set interval
+    checkEngineStatus();
+    setInterval(checkEngineStatus, 5000);
+
+    // Initial config load
 }
 
 window.checkReadiness = function() {
@@ -48,10 +77,14 @@ window.checkReadiness = function() {
 
 window.addEventListener('bridgeReady', () => {
     if (api) {
-        api.app_ready.connect(enableUI);
+        api.app_ready.connect(() => {
+            enableUI();
+            initializeMainControl(api);
+        });
         api.isReady(function(ready) {
             if (ready) {
                 enableUI();
+                initializeMainControl(api);
             }
         });
     }

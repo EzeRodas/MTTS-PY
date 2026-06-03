@@ -16,6 +16,7 @@ function switchTab(tabId, button) {
     if (tabId === 'audio') loadAudioTab();
     if (tabId === 'dictionary') loadDictionaryTab();
     if (tabId === 'engine') loadEngineTab();
+    if (tabId === 'engineManagement') loadEngineManagementTab();
     if (tabId === 'hotkeys') loadHotkeysTab();
     if (tabId === 'history') loadHistoryTab();
 }
@@ -25,10 +26,6 @@ document.getElementById('backToQuickBtn').addEventListener('click', () => {
     if (parent && typeof parent.triggerCollapse === 'function') {
         parent.triggerCollapse();
     }
-});
-
-document.getElementById('closeSettingsBtn').addEventListener('click', () => {
-    if (api) api.closeSettings();
 });
 
 document.getElementById('exitAppBtn').addEventListener('click', () => {

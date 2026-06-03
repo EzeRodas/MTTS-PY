@@ -245,15 +245,33 @@ def main():
     tray = TrayIcon(main_window)
     tray.show()
 
-    # Quick parse to check startMinimized
+    # Quick parse to check startMinimized and setup status
     from src.core.settings_manager import SettingsManager
     sm = SettingsManager()
     config = sm.get_app_config()
     start_minimized = config.get("startMinimized", False)
+    initial_setup_complete = config.get("initialSetupComplete", False)
 
-    # Show main window immediately (unless --hide was passed or start_minimized is true)
-    if "--hide" not in args and not start_minimized:
-        main_window.show()
+    from src.core.model_manager import ModelManager
+    model_manager = ModelManager(sm)
+    bridge.set_model_manager(model_manager)
+
+    from src.ui.setup_window import SetupWindow
+    setup_window = SetupWindow(bridge)
+
+    def on_setup_finished():
+        setup_window.hide()
+        if "--hide" not in args and not start_minimized:
+            main_window.show()
+
+    bridge.setup_finished.connect(on_setup_finished)
+
+    if not initial_setup_complete:
+        setup_window.show()
+    else:
+        # Show main window immediately (unless --hide was passed or start_minimized is true)
+        if "--hide" not in args and not start_minimized:
+            main_window.show()
 
     # -----------------------------------------------------------------
     # Background bootstrap of backend services
@@ -266,25 +284,23 @@ def main():
     def _bg_bootstrap():
         try:
             logger.info("Background thread: Initializing backend services...")
-            from src.core.settings_manager import SettingsManager
             from src.infrastructure.audio_service import AudioService
             from src.core.history_manager import HistoryManager
             from src.infrastructure.kokoro import KokoroTTSProvider
             from src.core.hotkey_manager import HotkeyManager
             from src.core.app_controller import AppController
 
-            settings_manager = SettingsManager()
             audio_service = AudioService()
-            history_manager = HistoryManager(audio_service, settings_manager)
-            tts_provider = KokoroTTSProvider(settings_manager, audio_service, history_manager)
-            hotkey_manager = HotkeyManager(tts_provider, audio_service, settings_manager)
+            history_manager = HistoryManager(audio_service, sm)
+            tts_provider = KokoroTTSProvider(sm, audio_service, history_manager)
+            hotkey_manager = HotkeyManager(tts_provider, audio_service, sm)
             hotkey_manager.init()
 
             # Initialize app config on disk
-            settings_manager.get_app_config()
+            sm.get_app_config()
 
             app_controller = AppController(
-                tts_provider, settings_manager, audio_service, hotkey_manager, history_manager
+                tts_provider, sm, audio_service, hotkey_manager, history_manager, model_manager
             )
 
             # 1. Preload TTS model (imports ONNX and parses model)

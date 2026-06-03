@@ -2,11 +2,17 @@
 async function loadSettings() {
     if (!api) return;
 
-    // Models
     api.getModels(function(modelsJson) {
         const models = JSON.parse(modelsJson);
         const sel = document.getElementById('modelSelector');
         sel.innerHTML = '';
+        if (models.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = ''; opt.textContent = 'No TTS engine detected';
+            opt.disabled = true; opt.selected = true;
+            sel.appendChild(opt);
+            return;
+        }
         api.getActiveModel(function(active) {
             models.forEach(m => {
                 const opt = document.createElement('option');
@@ -15,17 +21,21 @@ async function loadSettings() {
                 sel.appendChild(opt);
             });
         });
+        sel.onchange = () => { api.setModel(sel.value); };
     });
-    const sel_model = document.getElementById('modelSelector');
-    const newSelModel = sel_model.cloneNode(true);
-    sel_model.parentNode.replaceChild(newSelModel, sel_model);
-    newSelModel.addEventListener('change', () => { api.setModel(newSelModel.value); });
 
     // Voices
     api.getVoices(function(voicesJson) {
         const voices = JSON.parse(voicesJson);
         const sel = document.getElementById('voiceSelector');
         sel.innerHTML = '';
+        if (voices.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = ''; opt.textContent = 'No voices available';
+            opt.disabled = true; opt.selected = true;
+            sel.appendChild(opt);
+            return;
+        }
 
         const langNames = {
             'a': 'American English',
@@ -104,22 +114,16 @@ async function loadSettings() {
                 currentGenderEl.appendChild(opt);
             });
         });
+        sel.onchange = () => { api.setVoice(sel.value); };
     });
-    const sel_voice = document.getElementById('voiceSelector');
-    const newSelVoice = sel_voice.cloneNode(true);
-    sel_voice.parentNode.replaceChild(newSelVoice, sel_voice);
-    newSelVoice.addEventListener('change', () => { api.setVoice(newSelVoice.value); });
 
     // App config + devices
     api.getAppConfig(function(configJson) {
         const config = JSON.parse(configJson);
 
-        // Output checkbox
         const outCb = document.getElementById('outputCheckbox');
-        const newOutCb = outCb.cloneNode(true);
-        outCb.parentNode.replaceChild(newOutCb, outCb);
-        newOutCb.checked = config.playback;
-        newOutCb.addEventListener('change', () => { api.updateAppConfig(JSON.stringify({playback: newOutCb.checked})); });
+        outCb.checked = config.playback;
+        outCb.onchange = () => { api.updateAppConfig(JSON.stringify({playback: outCb.checked})); };
 
         function updateSliderBackground(slider) {
             const val = slider.value;
@@ -129,34 +133,27 @@ async function loadSettings() {
             slider.style.background = `linear-gradient(to right, #6366f1 0%, #6366f1 ${percent}%, #d4d4d4 ${percent}%, #d4d4d4 100%)`;
         }
 
-        // Output volume
         const outSlider = document.getElementById('outputSlider');
-        const newOutSlider = outSlider.cloneNode(true);
-        outSlider.parentNode.replaceChild(newOutSlider, outSlider);
-        newOutSlider.value = String(config.volume * 100);
-        updateSliderBackground(newOutSlider);
-        newOutSlider.addEventListener('input', () => {
-            updateSliderBackground(newOutSlider);
-            api.updateAppConfig(JSON.stringify({volume: parseInt(newOutSlider.value) / 100}));
-        });
+        outSlider.value = String(config.volume * 100);
+        updateSliderBackground(outSlider);
+        outSlider.oninput = () => {
+            updateSliderBackground(outSlider);
+            api.updateAppConfig(JSON.stringify({volume: parseInt(outSlider.value) / 100}));
+        };
 
         // Monitoring checkbox
         const monCb = document.getElementById('monitoringCheckbox');
-        const newMonCb = monCb.cloneNode(true);
-        monCb.parentNode.replaceChild(newMonCb, monCb);
-        newMonCb.checked = config.monitoring;
-        newMonCb.addEventListener('change', () => { api.updateAppConfig(JSON.stringify({monitoring: newMonCb.checked})); });
+        monCb.checked = config.monitoring;
+        monCb.onchange = () => { api.updateAppConfig(JSON.stringify({monitoring: monCb.checked})); };
 
         // Monitoring volume
         const monSlider = document.getElementById('monitoringSlider');
-        const newMonSlider = monSlider.cloneNode(true);
-        monSlider.parentNode.replaceChild(newMonSlider, monSlider);
-        newMonSlider.value = String(config.monitoringVolume * 100);
-        updateSliderBackground(newMonSlider);
-        newMonSlider.addEventListener('input', () => {
-            updateSliderBackground(newMonSlider);
-            api.updateAppConfig(JSON.stringify({monitoringVolume: parseInt(newMonSlider.value) / 100}));
-        });
+        monSlider.value = String(config.monitoringVolume * 100);
+        updateSliderBackground(monSlider);
+        monSlider.oninput = () => {
+            updateSliderBackground(monSlider);
+            api.updateAppConfig(JSON.stringify({monitoringVolume: parseInt(monSlider.value) / 100}));
+        };
 
         // Devices
         api.getDevices(function(devicesJson) {

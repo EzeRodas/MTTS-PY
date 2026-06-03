@@ -85,7 +85,7 @@ body.advanced-body { margin: 0; padding: 0; width: 100%; height: 100%; }
 
 /* Right Content Column (70%) */
 .adv-content { width: 70%; height: 100%; padding: 24px; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; }
-.category-panel { display: none; flex-direction: column; gap: 20px; height: 100%; }
+.category-panel { display: none; flex-direction: column; gap: 20px; height: 100%; margin-bottom: 12px; }
 .category-panel.active { display: flex; }
 .adv-content h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; color: #111827; }
 .panel-description { font-size: 0.9rem; color: #6b7280; margin-bottom: 16px; }
@@ -153,3 +153,39 @@ body.advanced-body { margin: 0; padding: 0; width: 100%; height: 100%; }
 .dict-checkbox-label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: #6366f1; }
 .dict-list-container { max-height: 350px; margin-bottom: 16px; }
 .dict-item { background: white; padding: 12px; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+
+/* Initial Setup CSS */
+body.setup-body { background-color: transparent; margin: 0; display: flex; justify-content: center; align-items: center; height: 800px; width: 500px; color: white; overflow: hidden; border-radius: 12px; }
+.setup-container { width: 100%; height: 100%; display: flex; flex-direction: column; padding: 30px; box-sizing: border-box; background: linear-gradient(145deg, #16161d, #101015); border-radius: 12px; }
+.setup-container h1 { margin-top: 0; font-size: 24px; font-weight: 600; color: #e0e0e0; margin-bottom: 10px; }
+.setup-container p { color: #a0a0b0; font-size: 14px; margin-bottom: 25px; line-height: 1.5; }
+
+/* Engine Management (Shared & Advanced Tab) */
+.settings-group { padding-bottom: 16px; }
+.model-options { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; flex-grow: 1; }
+.model-option { display: flex; align-items: center; background-color: #1e1e26; padding: 15px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: all 0.2s ease; }
+.model-option:hover { background-color: #252530; }
+.model-option.selected { border-color: #6b6bff; background-color: rgba(107, 107, 255, 0.1); }
+.model-option input[type="radio"] { margin-right: 15px; width: 18px; height: 18px; accent-color: #6b6bff; }
+.model-info { display: flex; flex-direction: column; }
+.model-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; color: white; }
+.model-option.selected .model-title { color: #333; }
+.model-desc { font-size: 13px; color: #777788; }
+.progress-container { display: none; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+.progress-bar-bg { width: 100%; height: 8px; background-color: #2a2a35; border-radius: 4px; overflow: hidden; }
+.progress-bar-fill { height: 100%; width: 0%; background-color: #6b6bff; border-radius: 4px; transition: width 0.1s linear; }
+.progress-text { font-size: 12px; color: #a0a0b0; text-align: right; font-family: monospace; }
+.engine-actions { display: flex; justify-content: flex-end; gap: 15px; margin-top: auto; }
+.btn-engine { padding: 10px 20px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 14px; transition: background-color 0.2s ease; }
+.btn-engine.btn-sm { padding: 8px 16px; }
+.btn-skip { background-color: transparent; color: #a0a0b0; }
+.btn-skip:hover { color: white; background-color: rgba(255, 255, 255, 0.05); }
+.btn-download { background-color: #6b6bff; color: white; }
+.btn-download:hover { background-color: #5a5ae0; }
+.btn-download:disabled { background-color: #4a4a60; color: #888899; cursor: not-allowed; }
+.btn-delete { background-color: #ff4a4a; color: white; display: none; }
+.btn-delete:hover { background-color: #e03a3a; }
+.status-message { font-size: 13px; color: #ff6b6b; margin-top: 10px; margin-bottom: 15px; text-align: right; }
+.engine-status-card { background-color: rgba(107, 107, 255, 0.1); border: 1px solid #6b6bff; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+.engine-status-card h3 { margin-top: 0; color: white; font-size: 15px; }
+.engine-status-card p { color: #777788; font-size: 13px; margin-bottom: 0; }

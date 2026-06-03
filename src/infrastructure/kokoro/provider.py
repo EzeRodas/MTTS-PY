@@ -87,6 +87,9 @@ class KokoroTTSProvider:
 
     def preload_model(self) -> None:
         """Synchronously load the TTS model (designed to be run in a background thread)."""
+        if not self.is_available():
+            logger.info("TTS engine models not found, skipping preload.")
+            return
         try:
             self._get_tts_instance()
         except Exception as e:
@@ -101,6 +104,18 @@ class KokoroTTSProvider:
         # 1. Check path from settings
         config = self.settings_manager.get_app_config()
         settings_models_path = config.get("modelsPath", "")
+        
+        # Determine the precision we want to load.
+        # It should match the active model, e.g. "kokoro_fp16" -> "fp16".
+        # Let's get the active model name from settings if possible.
+        active_model = config.get("activeModel", "")
+        precision = ""
+        if active_model.startswith("kokoro_"):
+            precision = active_model.split("_")[1] # e.g. "fp16"
+        elif active_model == "kokoro":
+            precision = config.get("kokoroPrecision", "")
+            
+        logger.debug(f"Resolving model paths for precision: {precision}")
         
         search_paths = []
         if settings_models_path:
@@ -125,15 +140,33 @@ class KokoroTTSProvider:
                 unique_paths.append(path)
 
         for path in unique_paths:
+            # Check for precision-specific model file first
+            if precision:
+                m_path = path / f"kokoro-v1.0-{precision}.onnx"
+                v_path = path / self.VOICES_FILENAME
+                if m_path.exists() and v_path.exists():
+                    return m_path, v_path
+            
+            # Check for default name
             m_path = path / self.MODEL_FILENAME
             v_path = path / self.VOICES_FILENAME
             if m_path.exists() and v_path.exists():
                 return m_path, v_path
 
+        # If we couldn't find the active precision but another precision is installed,
+        # fallback to any available kokoro model file
+        for path in unique_paths:
+            v_path = path / self.VOICES_FILENAME
+            if v_path.exists():
+                for p in ["fp32", "fp16", "int8"]:
+                    m_path = path / f"kokoro-v1.0-{p}.onnx"
+                    if m_path.exists():
+                        return m_path, v_path
+
         return None, None
 
     def is_available(self) -> bool:
-        """Return True if the model and voices files are present."""
+        """Return True if any model and voices files are present."""
         m, v = self._resolve_model_paths()
         return m is not None and v is not None
 
@@ -154,8 +187,69 @@ class KokoroTTSProvider:
             )
 
         from kokoro_onnx import Kokoro
-        self.tts_instance = Kokoro(str(model_path), str(voices_path))
+        instance = Kokoro(str(model_path), str(voices_path))
+        self._patch_dtype_bug(instance)
+        self.tts_instance = instance
         return self.tts_instance
+
+    def reload_model(self) -> None:
+        """Clear cached instance and reload/preload the model."""
+        self.tts_instance = None
+        self.preload_model()
+
+    @staticmethod
+    def _patch_dtype_bug(instance: Any) -> None:
+        """Fix kokoro_onnx bug: speed is passed as int32 but models expect float32.
+
+        The library's _create_audio builds the ONNX input dict with
+        ``np.array([speed], dtype=np.int32)`` for newer model exports.
+        fp32 models tolerate this but fp16/int8 models raise
+        INVALID_ARGUMENT.  We inspect the model's declared input dtypes
+        and cast accordingly.
+        """
+        import numpy as np
+
+        sess = instance.sess
+        # Build a map of input_name -> numpy dtype from the model's metadata
+        _onnx_to_np = {
+            "tensor(float)": np.float32,
+            "tensor(float16)": np.float16,
+            "tensor(int32)": np.int32,
+            "tensor(int64)": np.int64,
+        }
+        expected_dtypes: dict[str, np.dtype] = {}
+        for inp in sess.get_inputs():
+            if inp.type in _onnx_to_np:
+                expected_dtypes[inp.name] = _onnx_to_np[inp.type]
+
+        original_create_audio = instance._create_audio
+
+        def _patched_create_audio(phonemes, voice, speed):
+            # Temporarily override sess.run to cast inputs
+            original_run = sess.run
+
+            def _casting_run(output_names, inputs, *args, **kwargs):
+                fixed = {}
+                for k, v in inputs.items():
+                    if k in expected_dtypes:
+                        arr = np.asarray(v)
+                        if arr.dtype != expected_dtypes[k]:
+                            arr = arr.astype(expected_dtypes[k])
+                        fixed[k] = arr
+                    else:
+                        fixed[k] = v
+                return original_run(output_names, fixed, *args, **kwargs)
+
+            sess.run = _casting_run
+            try:
+                audio, sr = original_create_audio(phonemes, voice, speed)
+                if hasattr(audio, "flatten"):
+                    audio = audio.flatten()
+                return audio, sr
+            finally:
+                sess.run = original_run
+
+        instance._create_audio = _patched_create_audio
 
     # ------------------------------------------------------------------
     # Voice management
@@ -166,6 +260,9 @@ class KokoroTTSProvider:
 
         Falls back to a hardcoded list if the runtime query fails.
         """
+        if not self.is_available():
+            return list(_FALLBACK_VOICES)
+            
         try:
             tts = self._get_tts_instance()
             return list(tts.get_voices())
@@ -200,6 +297,10 @@ class KokoroTTSProvider:
         text:
             The text to synthesise.
         """
+        if not self.is_available():
+            logger.warning("Synthesis requested but TTS engine is not available.")
+            return
+            
         tts = self._get_tts_instance()
         config = self.settings_manager.get_engine_config(
             "kokoro",

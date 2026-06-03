@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Initial Setup</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="setup-body">
+    <div class="setup-container">
+        <h1>Welcome to Moon-TTS</h1>
+        <p id="mainDesc">Before we start, we need to download the AI voice model. Please select the quality that best fits your system.</p>
+
+        <div id="engineSelectionContainer" style="display: flex; flex-direction: column; flex-grow: 1;">
+            <div class="model-options">
+                <label class="model-option selected">
+                    <input type="radio" name="engineType" value="kokoro" checked>
+                    <div class="model-info">
+                        <span class="model-title">Kokoro TTS Engine</span>
+                        <span class="model-desc">State of the art, highly natural sounding voices.</span>
+                    </div>
+                </label>
+            </div>
+            <div class="engine-actions">
+                <button class="btn-engine btn-skip" id="btnSkip" onclick="skipSetup()">Skip Setup</button>
+                <button class="btn-engine btn-download" onclick="selectEngine()">Next ></button>
+            </div>
+        </div>
+
+        <div id="qualitySelectionContainer" style="display: none; flex-direction: column; flex-grow: 1;">
+            <p style="color: #a0a0b0; font-size: 14px; margin-bottom: 15px; margin-top: -10px;">Select the model quality for Kokoro:</p>
+            <div class="model-options" id="modelOptions">
+                <label class="model-option selected">
+                    <input type="radio" name="modelQuality" value="fp32" checked>
+                    <div class="model-info">
+                        <span class="model-title">Kokoro FP32 (High Quality)</span>
+                        <span class="model-desc">Highest fidelity, ~320MB. Recommended for modern PCs.</span>
+                    </div>
+                </label>
+                <label class="model-option">
+                    <input type="radio" name="modelQuality" value="fp16">
+                    <div class="model-info">
+                        <span class="model-title">Kokoro FP16 (Balanced)</span>
+                        <span class="model-desc">Fast generation, ~160MB. Great middle ground.</span>
+                    </div>
+                </label>
+                <label class="model-option">
+                    <input type="radio" name="modelQuality" value="int8">
+                    <div class="model-info">
+                        <span class="model-title">Kokoro INT8 (Fastest)</span>
+                        <span class="model-desc">Lowest VRAM usage, ~80MB. Best for older hardware.</span>
+                    </div>
+                </label>
+            </div>
+
+            <div class="progress-container" id="progressContainer">
+                <div class="model-title" id="progressFile">Downloading...</div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="progressBar"></div>
+                </div>
+                <div class="progress-text" id="progressText">0 MB / 0 MB (0%)</div>
+            </div>
+
+            <div id="statusMessage" class="status-message"></div>
+
+            <div class="engine-actions">
+                <button class="btn-engine btn-skip" id="btnBack" onclick="backToEngine()">< Back</button>
+                <button class="btn-engine btn-delete" id="btnDelete" onclick="deleteModel()">Delete</button>
+                <button class="btn-engine btn-download" id="btnDownload" onclick="startDownload()">Download & Install</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script src="scripts/setup.js"></script>
+</body>
+</html>

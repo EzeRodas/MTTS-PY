@@ -34,16 +34,38 @@ class Bridge(QObject):
     app_ready = Signal()                     # Emitted when initialization is done
     backend_initialized = Signal(object)     # Emitted from bg thread with AppController
     shortcut_updated_by_os = Signal(str)     # Emitted when OS changes the shortcut
+    
+    # Model download & setup signals
+    download_progress = Signal(int, int, str) # bytes_read, total_bytes, filename
+    download_complete = Signal(bool, str)     # success, error_msg
+    setup_finished = Signal()                 # Emitted when setup is completed or skipped
 
     def __init__(self, app_controller=None, parent=None):
         super().__init__(parent)
         self._controller = app_controller
+        self._model_manager = None
         self.is_dialog_open = False
         self.is_ready = False
+
+    def set_model_manager(self, mm):
+        """Set the model manager directly (available before controller)."""
+        self._model_manager = mm
+        mm.download_progress.connect(self.download_progress.emit)
+        mm.download_complete.connect(self._on_download_complete)
+
+    def _on_download_complete(self, success: bool, error: str):
+        """Forward download_complete and reload engine if successful."""
+        self.download_complete.emit(success, error)
+        if success and self._controller:
+            try:
+                self._controller.reload_engine()
+            except Exception as e:
+                logger.error(f"Failed to reload engine after download: {e}")
 
     def set_controller(self, controller):
         """Set the app controller after construction (for deferred init)."""
         self._controller = controller
+
 
     # =========================================================================
     # TTS Actions
@@ -193,6 +215,7 @@ class Bridge(QObject):
     @Slot()
     def quitApp(self):
         """Fully quit the application."""
+        logger.info("Quit requested via bridge.")
         self.quit_app_requested.emit()
 
     @Slot(str)
@@ -355,3 +378,74 @@ class Bridge(QObject):
         """Handle escape key press from the frontend to hide all windows."""
         self.escape_pressed.emit()
 
+
+    # =========================================================================
+    # Model Management
+    # =========================================================================
+
+    @Slot(str)
+    def downloadModel(self, precision: str):
+        logger.info(f"downloadModel called with precision={precision}")
+        if self._model_manager:
+            self._model_manager.download_model(precision)
+        else:
+            logger.error("downloadModel: _model_manager is None!")
+
+    @Slot(result=bool)
+    def deleteModel(self) -> bool:
+        if self._model_manager:
+            res = self._model_manager.delete_model()
+            if self._controller:
+                self._controller.reload_engine()
+            return res
+        return False
+
+    @Slot(str, result=bool)
+    def deleteModelWithPrecision(self, precision: str) -> bool:
+        if self._model_manager:
+            res = self._model_manager.delete_model(precision)
+            if self._controller:
+                self._controller.reload_engine()
+            return res
+        return False
+
+    @Slot(result=bool)
+    def isModelInstalled(self) -> bool:
+        if self._model_manager:
+            return self._model_manager.is_model_installed()
+        return False
+
+    @Slot(str, result=bool)
+    def isModelInstalledWithPrecision(self, precision: str) -> bool:
+        if self._model_manager:
+            return self._model_manager.is_model_installed(precision)
+        return False
+
+    @Slot(result=str)
+    def getInstalledPrecisions(self) -> str:
+        if self._model_manager:
+            return json.dumps(self._model_manager.get_installed_precisions())
+        return "[]"
+
+    @Slot(result=bool)
+    def isDownloadRunning(self) -> bool:
+        if self._model_manager:
+            return self._model_manager.is_download_running()
+        return False
+        
+    @Slot(result=bool)
+    def isEngineAvailable(self) -> bool:
+        """Check if the TTS engine has models and is ready."""
+        if self._controller:
+            return self._controller.check_tts_engine_status()
+        return False
+
+    @Slot()
+    def finishSetup(self):
+        self.setup_finished.emit()
+
+    @Slot()
+    def skipSetup(self):
+        if self._controller:
+            self._controller.update_app_config({"initialSetupComplete": True})
+        self.setup_finished.emit()

@@ -3,7 +3,7 @@ Application controller coordinating TTS, settings, audio, history, and hotkeys.
 Port of the TypeScript AppController.ts.
 """
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -16,15 +16,38 @@ class AppController:
     Decouples UI layers (both CLI and Qt frontend) from underlying business logic.
     """
 
-    def __init__(self, tts_service, settings_manager, audio_service, hotkey_manager, history_manager):
+    def __init__(
+        self,
+        tts_service: Any,
+        settings_manager: Any,
+        audio_service: Any,
+        hotkey_manager: Any,
+        history_manager: Any,
+        model_manager: Any = None
+    ) -> None:
+        """Initialise the application controller.
+
+        Args:
+            tts_service: The core Text-to-Speech provider.
+            settings_manager: System for reading/writing configuration.
+            audio_service: Audio playback subsystem.
+            hotkey_manager: Service for handling global shortcut actions.
+            history_manager: Logging system for synthesized text history.
+            model_manager: Handles downloading and managing TTS models.
+        """
         self._tts_service = tts_service
         self._settings_manager = settings_manager
         self._audio_service = audio_service
         self._hotkey_manager = hotkey_manager
         self._history_manager = history_manager
+        self._model_manager = model_manager
         self._dictionary_manager = DictionaryManager(settings_manager)
-        self._available_models = ["kokoro"]
-        self._active_model = "kokoro"
+        self._available_models = self.list_models()
+        saved_active = self._settings_manager.get_app_config().get("activeModel", "")
+        if saved_active in self._available_models:
+            self._active_model = saved_active
+        else:
+            self._active_model = self._available_models[0] if self._available_models else ""
 
     # =========================================================================
     # TTS
@@ -44,11 +67,17 @@ class AppController:
     # =========================================================================
 
     def list_models(self) -> list[str]:
-        """Return available TTS engine identifiers."""
-        models = []
+        """Return available TTS engine identifiers with precision suffix."""
         if hasattr(self._tts_service, "is_available") and self._tts_service.is_available():
-            models.append("kokoro")
-        return models
+            if self._model_manager and hasattr(self._model_manager, "get_installed_precisions"):
+                precisions = self._model_manager.get_installed_precisions()
+                if precisions:
+                    return [f"kokoro_{p}" for p in precisions]
+            config = self._settings_manager.get_app_config()
+            precision = config.get("kokoroPrecision", "")
+            name = f"kokoro_{precision}" if precision else "kokoro"
+            return [name]
+        return []
 
     def get_active_model(self) -> str:
         """Return the currently selected model name if available, else empty string."""
@@ -61,8 +90,29 @@ class AppController:
         """Set the active model if it exists."""
         if model_name in self.list_models():
             self._active_model = model_name
+            self._settings_manager.update_app_config({"activeModel": model_name})
+            if hasattr(self._tts_service, "reload_model"):
+                self._tts_service.reload_model()
             return True
         return False
+
+    def reload_engine(self) -> None:
+        """Re-check engine availability and preload if a model is now present."""
+        if hasattr(self._tts_service, "is_available") and self._tts_service.is_available():
+            try:
+                if hasattr(self._tts_service, "reload_model"):
+                    self._tts_service.reload_model()
+                else:
+                    self._tts_service.preload_model()
+                models = self.list_models()
+                saved_active = self._settings_manager.get_app_config().get("activeModel", "")
+                if saved_active in models:
+                    self._active_model = saved_active
+                elif models:
+                    self._active_model = models[0]
+                logger.info(f"Engine reloaded. Active model: {self._active_model}")
+            except Exception as e:
+                logger.error(f"Failed to reload engine: {e}")
 
     # =========================================================================
     # Voices
@@ -70,6 +120,8 @@ class AppController:
 
     def list_voices(self) -> list[str]:
         """Return voice IDs from the active TTS provider."""
+        if hasattr(self._tts_service, "is_available") and not self._tts_service.is_available():
+            return []
         try:
             return self._tts_service.get_voices()
         except Exception as e:
@@ -236,3 +288,16 @@ class AppController:
             logger.warning("preview_spelling not supported by active TTS service.")
 
 
+
+    # =========================================================================
+    # Model Management
+    # =========================================================================
+
+    def get_model_manager(self) -> Any:
+        return self._model_manager
+
+    def check_tts_engine_status(self) -> bool:
+        """Check if TTS engine is available."""
+        if hasattr(self._tts_service, "is_available"):
+            return self._tts_service.is_available()
+        return True

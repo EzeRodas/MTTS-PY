@@ -4,6 +4,7 @@ Uses QWebEngineView to render the HTML/CSS/JS frontend.
 """
 import json
 import logging
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, QEvent
@@ -101,10 +102,17 @@ class MainWindow(QMainWindow):
 
     def _on_quit_requested(self):
         """Fully quit the application."""
+        logger.info("Exiting application...")
         app = QApplication.instance()
         if app:
             app.setProperty("is_quitting", True)
+        
+        # Close all top-level widgets to trigger cleanups
+        for widget in QApplication.topLevelWidgets():
+            widget.close()
+            
         QApplication.quit()
+        sys.exit(0)
 
     def _on_drag_start(self, screen_x: int, screen_y: int):
         """Begin window drag from the given screen coordinates."""
