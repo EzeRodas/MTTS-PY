@@ -1,5 +1,19 @@
 let bridge_obj = null;
 let isDownloading = false;
+let setupStatusTimeout = null;
+let lastSetupDownloadedModel = "";
+
+function showSetupToast(msg, color) {
+    const el = document.getElementById('statusMessage');
+    el.innerText = msg;
+    if (color) el.style.color = color;
+    if (setupStatusTimeout) {
+        clearTimeout(setupStatusTimeout);
+    }
+    setupStatusTimeout = setTimeout(() => {
+        el.innerText = "";
+    }, 5000);
+}
 
 document.addEventListener("DOMContentLoaded", () => {
     // Handle radio button selection styling
@@ -77,7 +91,7 @@ function initBridgeConnections() {
         if (success) {
             bridge_obj.finishSetup();
         } else {
-            document.getElementById('statusMessage').innerText = "Error: " + errorMsg;
+            showSetupToast("Error: " + errorMsg, "#ff4a4a");
             document.getElementById('btnDownload').disabled = false;
             document.getElementById('btnSkip').disabled = false;
             document.getElementById('modelOptions').style.opacity = "1";
@@ -96,6 +110,7 @@ function startDownload() {
     }
 
     const selected = document.querySelector('input[name="modelQuality"]:checked').value;
+    lastSetupDownloadedModel = selected;
     console.log("startDownload: selected precision =", selected);
     console.log("startDownload: bridge_obj =", bridge_obj);
     console.log("startDownload: bridge_obj.downloadModel =", bridge_obj.downloadModel);
@@ -103,6 +118,7 @@ function startDownload() {
     isDownloading = true;
     document.getElementById('btnDownload').disabled = true;
     document.getElementById('btnSkip').disabled = true;
+    if (setupStatusTimeout) clearTimeout(setupStatusTimeout);
     document.getElementById('statusMessage').innerText = "";
     document.getElementById('modelOptions').style.opacity = "0.5";
     document.getElementById('progressContainer').style.display = "flex";
@@ -126,9 +142,10 @@ function deleteModel() {
     if (bridge_obj.deleteModelWithPrecision) {
         bridge_obj.deleteModelWithPrecision(val, function(success) {
             if (success) {
+                showSetupToast(`Kokoro model (${val.toUpperCase()}) deleted successfully.`, "#4aff4a");
                 updateModelOptionsList();
             } else {
-                document.getElementById('statusMessage').innerText = `Failed to delete model (${val.toUpperCase()}).`;
+                showSetupToast(`Failed to delete Kokoro model (${val.toUpperCase()}).`, "#ff4a4a");
             }
         });
     }

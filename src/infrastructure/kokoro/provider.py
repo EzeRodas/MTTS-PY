@@ -18,6 +18,9 @@ from .language_map import get_language_for_voice
 
 logger = logging.getLogger(__name__)
 
+# Silence the phonemizer logger to prevent warnings about uppercase acronyms
+logging.getLogger("phonemizer").setLevel(logging.ERROR)
+
 # Voices known to ship with Kokoro-82M-v1.0.
 _FALLBACK_VOICES: list[str] = [
     "af_heart",
@@ -317,48 +320,95 @@ class KokoroTTSProvider:
         lang = get_language_for_voice(voice_id)
 
         logger.info(f"Synthesizing text with voice='{voice_id}' (resolved lang='{lang}')")
-        samples, sample_rate = tts.create(
-            text,
-            voice=voice_id,
-            speed=speed,
-            lang=lang,
-        )
+        
+        import re
+        import queue
+        import threading
+        
+        # Split text into sentences for streaming
+        # Basic split on punctuation followed by whitespace, keeping the punctuation
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        sentences = [s.strip() for s in sentences if s.strip()]
+        if not sentences:
+            return
 
-        # Write to a temporary WAV file.
-        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".wav")
-        os.close(tmp_fd)
+        app_config = self.settings_manager.get_app_config()
+        playback = app_config.get("playback", True)
+        device_id = app_config.get("playbackDevice", "default")
+        volume = app_config.get("volume", 0.8)
+        monitoring = app_config.get("monitoring", False)
+        monitoring_device_id = app_config.get("monitoringDevice", "default")
+        monitoring_volume = app_config.get("monitoringVolume", 0.8)
+
+        play_queue = queue.Queue()
+        
+        def playback_worker():
+            while True:
+                item = play_queue.get()
+                if item is None:
+                    break
+                chunk_path = item
+                try:
+                    self.audio_service.play(
+                        file_path=chunk_path,
+                        playback=playback,
+                        device_id=device_id,
+                        volume=volume,
+                        monitoring=monitoring,
+                        monitoring_device_id=monitoring_device_id,
+                        monitoring_volume=monitoring_volume,
+                    )
+                except Exception as e:
+                    logger.error(f"Error playing chunk: {e}")
+                finally:
+                    try:
+                        os.remove(chunk_path)
+                    except:
+                        pass
+                play_queue.task_done()
+
+        worker_thread = threading.Thread(target=playback_worker, daemon=True)
+        worker_thread.start()
+
+        master_samples = []
+        sample_rate_used = 24000
 
         try:
             import soundfile as sf
-            sf.write(tmp_path, samples, sample_rate)
+            import numpy as np
+            for sentence in sentences:
+                samples, sample_rate = tts.create(
+                    sentence,
+                    voice=voice_id,
+                    speed=speed,
+                    lang=lang,
+                )
+                sample_rate_used = sample_rate
+                master_samples.append(samples)
+                
+                tmp_fd, tmp_path = tempfile.mkstemp(suffix=".wav")
+                os.close(tmp_fd)
+                sf.write(tmp_path, samples, sample_rate)
+                play_queue.put(tmp_path)
+                
+        except Exception as e:
+            logger.error(f"Synthesis failed during streaming: {e}")
+            
+        play_queue.put(None)
+        worker_thread.join()
 
-            # Record in history (best-effort).
+        # Write the full synthesized text to a single file for history
+        if master_samples:
             try:
-                self.history_manager.add_entry(text, tmp_path)
+                import soundfile as sf
+                import numpy as np
+                all_samples = np.concatenate(master_samples)
+                hist_fd, hist_path = tempfile.mkstemp(suffix=".wav")
+                os.close(hist_fd)
+                sf.write(hist_path, all_samples, sample_rate_used)
+                self.history_manager.add_entry(text, hist_path)
             except Exception as e:
                 logger.error(f"Failed to record history: {e}")
-
-            # Retrieve playback settings from settings_manager.
-            app_config = self.settings_manager.get_app_config()
-            playback = app_config.get("playback", True)
-            device_id = app_config.get("playbackDevice", "default")
-            volume = app_config.get("volume", 0.8)
-            monitoring = app_config.get("monitoring", False)
-            monitoring_device_id = app_config.get("monitoringDevice", "default")
-            monitoring_volume = app_config.get("monitoringVolume", 0.8)
-
-            self.audio_service.play(
-                file_path=tmp_path,
-                playback=playback,
-                device_id=device_id,
-                volume=volume,
-                monitoring=monitoring,
-                monitoring_device_id=monitoring_device_id,
-                monitoring_volume=monitoring_volume,
-            )
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
 
     def preview_spelling(self, spelling: str) -> None:
         """Synthesize *spelling* and play it ONLY through the monitoring device.

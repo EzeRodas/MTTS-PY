@@ -1,4 +1,18 @@
 let isEngineDownloading = false;
+let engineStatusTimeout = null;
+let lastDownloadedModel = "";
+
+function showEngineToast(msg, color) {
+    const el = document.getElementById('engineStatusMessage');
+    el.innerText = msg;
+    el.style.color = color;
+    if (engineStatusTimeout) {
+        clearTimeout(engineStatusTimeout);
+    }
+    engineStatusTimeout = setTimeout(() => {
+        el.innerText = "";
+    }, 5000);
+}
 
 function loadEngineManagementTab() {
     const options = document.querySelectorAll('#engineModelOptions .model-option');
@@ -40,16 +54,15 @@ function loadEngineManagementTab() {
         api.download_complete.connect(function(success, errorMsg) {
             isEngineDownloading = false;
             if (success) {
-                document.getElementById('engineStatusMessage').innerText = "Model installed successfully. Please restart the app.";
-                document.getElementById('engineStatusMessage').style.color = "#4aff4a";
+                const modelName = lastDownloadedModel ? `Kokoro (${lastDownloadedModel.toUpperCase()})` : "Model";
+                showEngineToast(`${modelName} installed successfully. Please restart the app.`, "#4aff4a");
                 checkEngineStatus(api);
                 
                 document.getElementById('btnEngineDownload').disabled = false;
                 document.getElementById('engineModelOptions').style.opacity = "1";
                 document.getElementById('engineProgressContainer').style.display = "none";
             } else {
-                document.getElementById('engineStatusMessage').innerText = "Error: " + errorMsg;
-                document.getElementById('engineStatusMessage').style.color = "#ff4a4a";
+                showEngineToast("Error: " + errorMsg, "#ff4a4a");
                 document.getElementById('btnEngineDownload').disabled = false;
                 document.getElementById('engineModelOptions').style.opacity = "1";
                 document.getElementById('engineProgressContainer').style.display = "none";
@@ -180,9 +193,11 @@ window.startEngineDownload = function() {
     if (isEngineDownloading) return;
     
     const selected = document.querySelector('input[name="engineModelQuality"]:checked').value;
+    lastDownloadedModel = selected;
     
     isEngineDownloading = true;
     document.getElementById('btnEngineDownload').disabled = true;
+    if (engineStatusTimeout) clearTimeout(engineStatusTimeout);
     document.getElementById('engineStatusMessage').innerText = "";
     document.getElementById('engineModelOptions').style.opacity = "0.5";
     document.getElementById('engineProgressContainer').style.display = "flex";
@@ -201,12 +216,10 @@ window.deleteEngineModel = function() {
     if (api && api.deleteModel) {
         api.deleteModel(function(success) {
             if (success) {
-                document.getElementById('engineStatusMessage').innerText = "All models deleted successfully. Restart app to apply fully.";
-                document.getElementById('engineStatusMessage').style.color = "#ff4a4a";
+                showEngineToast("All Kokoro models deleted successfully. Restart app to apply fully.", "#ff4a4a");
                 checkEngineStatus(api);
             } else {
-                document.getElementById('engineStatusMessage').innerText = "Failed to delete models.";
-                document.getElementById('engineStatusMessage').style.color = "#ff4a4a";
+                showEngineToast("Failed to delete models.", "#ff4a4a");
             }
         });
     }
@@ -223,12 +236,10 @@ window.deleteSelectedEngineModel = function() {
     if (api && api.deleteModelWithPrecision) {
         api.deleteModelWithPrecision(val, function(success) {
             if (success) {
-                document.getElementById('engineStatusMessage').innerText = `Model (${val.toUpperCase()}) deleted successfully.`;
-                document.getElementById('engineStatusMessage').style.color = "#ff4a4a";
+                showEngineToast(`Kokoro model (${val.toUpperCase()}) deleted successfully.`, "#ff4a4a");
                 checkEngineStatus(api);
             } else {
-                document.getElementById('engineStatusMessage').innerText = `Failed to delete model (${val.toUpperCase()}).`;
-                document.getElementById('engineStatusMessage').style.color = "#ff4a4a";
+                showEngineToast(`Failed to delete Kokoro model (${val.toUpperCase()}).`, "#ff4a4a");
             }
         });
     }

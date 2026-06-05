@@ -4,38 +4,17 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, QEvent, QTimer
-from PySide6.QtWidgets import QMainWindow, QApplication
-from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebChannel import QWebChannel
-
-try:
-    from PySide6.QtWebEngineCore import QWebEnginePage
-except ImportError:
-    from PySide6.QtWebEngineWidgets import QWebEnginePage
+from PySide6.QtWidgets import QApplication
 
 from .bridge import Bridge
+from .base_window import BaseWebWindow
 
 logger = logging.getLogger(__name__)
 
 WEB_DIR = Path(__file__).parent / "web"
 
 
-class ConsoleWebEnginePage(QWebEnginePage):
-    """QWebEnginePage subclass that redirects JS console messages to Python logging."""
-    def javaScriptConsoleMessage(self, level, message, line, source_id):
-        try:
-            lvl_map = {
-                QWebEnginePage.JavaScriptConsoleMessageLevel.InfoMessageLevel: logging.INFO,
-                QWebEnginePage.JavaScriptConsoleMessageLevel.WarningMessageLevel: logging.WARNING,
-                QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel: logging.ERROR,
-            }
-            lvl = lvl_map.get(level, logging.INFO)
-        except AttributeError:
-            lvl = logging.INFO
-        logger.log(lvl, f"[JS Console] {message} ({source_id}:{line})")
-
-
-class SettingsWindow(QMainWindow):
+class SettingsWindow(BaseWebWindow):
     """
     Frameless, transparent popup window for application settings.
     Shares the same Bridge object as the main window for IPC.
@@ -45,37 +24,21 @@ class SettingsWindow(QMainWindow):
     SETTINGS_HEIGHT = 540
 
     def __init__(self, bridge: Bridge, parent=None):
-        super().__init__(parent)
-        self._bridge = bridge
+        html_path = WEB_DIR / "settings.html"
+        super().__init__(
+            bridge=bridge, 
+            html_path=html_path, 
+            frameless=True, 
+            transparent=True, 
+            parent=parent, 
+            console_prefix="Settings JS"
+        )
         self._show_time = 0.0
 
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
-        )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedSize(self.SETTINGS_WIDTH, self.SETTINGS_HEIGHT)
-
-        # Web engine view
-        self._web_view = QWebEngineView(self)
-        self._web_view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-        self._web_view.setPage(ConsoleWebEnginePage(self._web_view))
-        self._web_view.setStyleSheet("background: transparent;")
-        self._web_view.page().setBackgroundColor(Qt.GlobalColor.transparent)
-        self.setCentralWidget(self._web_view)
-
-        # Web channel — separate channel instance but same bridge object
-        self._channel = QWebChannel(self._web_view.page())
-        self._channel.registerObject("bridge", self._bridge)
-        self._web_view.page().setWebChannel(self._channel)
 
         # Connect close signal
         self._bridge.close_settings_requested.connect(self.hide)
-
-        # Load HTML
-        html_path = WEB_DIR / "settings.html"
-        self._web_view.setUrl(QUrl.fromLocalFile(str(html_path)))
 
     def show_at(self, main_window, button_bounds_json: str):
         """
