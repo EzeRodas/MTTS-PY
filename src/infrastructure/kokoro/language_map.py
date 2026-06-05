@@ -4,6 +4,18 @@ Matches the first character of the voice ID to its respective standard language 
 needed by the kokoro-onnx engine and phonemizer/espeak-ng.
 """
 
+_LANG_MAP = {
+    "a": "en-us",
+    "b": "en-gb",
+    "e": "es",
+    "f": "fr-fr",
+    "j": "ja",
+    "z": "cmn",
+    "i": "it",
+    "p": "pt-br",
+    "h": "hi",
+}
+
 def get_language_for_voice(voice_id: str) -> str:
     """Determine the language code based on the voice ID prefix.
 
@@ -22,15 +34,4 @@ def get_language_for_voice(voice_id: str) -> str:
         return "en-us"
 
     prefix = voice_id[0].lower()
-    mapping = {
-        "a": "en-us",
-        "b": "en-gb",
-        "e": "es",
-        "f": "fr-fr",
-        "j": "ja",
-        "z": "cmn",
-        "i": "it",
-        "p": "pt-br",
-        "h": "hi",
-    }
-    return mapping.get(prefix, "en-us")
+    return _LANG_MAP.get(prefix, "en-us")

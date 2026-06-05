@@ -99,7 +99,7 @@ class HistoryManager:
             return
 
         config = self._settings_manager.get_app_config()
-        self._audio_service.play(str(wav), config)
+        self._audio_service.play_with_config(str(wav), config)
 
     def delete_history(self, entry_id: int) -> None:
         """Delete a single history entry and shift subsequent files down.

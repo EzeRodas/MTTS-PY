@@ -45,7 +45,7 @@ class SetupWindow(QWidget):
         self.view.page().setBackgroundColor(Qt.transparent)
         
         self.channel = QWebChannel()
-        self.channel.registerObject("bridge_obj", self.bridge)
+        self.channel.registerObject("bridge", self.bridge)
         self.view.page().setWebChannel(self.channel)
         
         layout.addWidget(self.view)

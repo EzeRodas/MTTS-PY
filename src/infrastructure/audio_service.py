@@ -252,7 +252,24 @@ class AudioService:
                 try:
                     resolved_dev = int(device_id)
                 except (TypeError, ValueError):
-                    resolved_dev = None
+                    pass
+            
+            def stop(self) -> None:
+                """Stop any ongoing playback."""
+                # This is a stub for future implementation where threading may need cancellation.
+                pass
+
+            def play_with_config(self, file_path: str, config: dict[str, Any]) -> None:
+                """Helper to extract playback settings from app config and play."""
+                self.play(
+                    file_path=file_path,
+                    playback=config.get("playback", True),
+                    device_id=config.get("playbackDevice", "default"),
+                    volume=config.get("volume", 0.8),
+                    monitoring=config.get("monitoring", False),
+                    monitoring_device_id=config.get("monitoringDevice", "default"),
+                    monitoring_volume=config.get("monitoringVolume", 0.8),
+                )
 
             # Query target device info
             target_sr = samplerate
@@ -269,9 +286,25 @@ class AudioService:
                 logger.info(f"Resampling audio from {samplerate}Hz to native device rate {target_sr}Hz")
                 duration = len(data) / samplerate
                 num_samples = int(duration * target_sr)
-                x_old = np.linspace(0, duration, len(data), endpoint=False)
-                x_new = np.linspace(0, duration, num_samples, endpoint=False)
-                data = np.interp(x_new, x_old, data)
+                
+                # Perform high-quality FFT resampling using numpy
+                X = np.fft.fft(data)
+                new_X = np.zeros(num_samples, dtype=X.dtype)
+                keep = min(len(data), num_samples)
+                mid = keep // 2
+                if keep % 2 == 0:
+                    new_X[:mid] = X[:mid]
+                    new_X[-mid+1:] = X[-mid+1:]
+                    nyquist = X[mid] if mid < len(X) else 0.0
+                    new_X[mid] += nyquist * 0.5
+                    if num_samples % 2 == 0 and num_samples - mid < num_samples:
+                        new_X[num_samples - mid] += nyquist * 0.5
+                else:
+                    new_X[:mid+1] = X[:mid+1]
+                    new_X[-mid:] = X[-mid:]
+                y = np.fft.ifft(new_X)
+                data = np.real(y) * (float(num_samples) / len(data))
+                data = data.astype(np.float32)
                 samplerate = target_sr
 
             # Convert mono to stereo if device supports/requires multi-channel output

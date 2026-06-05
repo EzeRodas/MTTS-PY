@@ -26,8 +26,10 @@ from pathlib import Path
 # Platform-specific display setup (must happen before QApplication)
 # ---------------------------------------------------------------------------
 if sys.platform == "linux":
-    # Force X11/XWayland mode on Linux to allow absolute window positioning and transparency.
-    os.environ["QT_QPA_PLATFORM"] = "xcb"
+    # Force X11/XWayland mode on Linux to allow absolute window positioning and transparency
+    # unless QT_QPA_PLATFORM is already set by the user/system.
+    if "QT_QPA_PLATFORM" not in os.environ:
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QSharedMemory, QByteArray, Qt, QObject, Slot

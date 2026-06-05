@@ -54,8 +54,8 @@ class Bridge(QObject):
     def set_model_manager(self, mm):
         """Set the model manager directly (available before controller)."""
         self._model_manager = mm
-        mm.download_progress.connect(self.download_progress.emit)
-        mm.download_complete.connect(self._on_download_complete)
+        mm.add_progress_callback(self.download_progress.emit)
+        mm.add_complete_callback(self._on_download_complete)
 
     def _on_download_complete(self, success: bool, error: str):
         """Forward download_complete and reload engine if successful."""

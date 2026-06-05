@@ -3,10 +3,15 @@ Application controller coordinating TTS, settings, audio, history, and hotkeys.
 Port of the TypeScript AppController.ts.
 """
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
-logger = logging.getLogger(__name__)
-
+if TYPE_CHECKING:
+    from src.core.tts_engine import TTSEngine
+    from src.core.settings_manager import SettingsManager
+    from src.infrastructure.audio_service import AudioService
+    from src.core.hotkey_manager import HotkeyManager
+    from src.core.history_manager import HistoryManager
+    from src.core.model_manager import ModelManager
 
 from src.core.dictionary_manager import DictionaryManager
 
@@ -18,12 +23,12 @@ class AppController:
 
     def __init__(
         self,
-        tts_service: Any,
-        settings_manager: Any,
-        audio_service: Any,
-        hotkey_manager: Any,
-        history_manager: Any,
-        model_manager: Any = None
+        tts_service: "TTSEngine",
+        settings_manager: "SettingsManager",
+        audio_service: "AudioService",
+        hotkey_manager: "HotkeyManager",
+        history_manager: "HistoryManager",
+        model_manager: Optional["ModelManager"] = None
     ) -> None:
         """Initialise the application controller.
 
@@ -155,8 +160,9 @@ class AppController:
         """Set the synthesis speed in Kokoro configuration."""
         try:
             self._settings_manager.update_engine_config("kokoro", {"speed": speed})
-            if hasattr(self._tts_service, "kokoro_config"):
-                self._tts_service.kokoro_config["speed"] = speed
+            if isinstance(speed, (int, float)):
+                if hasattr(self._tts_service, "set_speed"):
+                    self._tts_service.set_speed(speed)
         except Exception as e:
             logger.error(f"Failed to set speed: {e}")
 

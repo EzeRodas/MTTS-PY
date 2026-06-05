@@ -16,12 +16,10 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    if (typeof qt !== 'undefined' && qt.webChannelTransport) {
-        new QWebChannel(qt.webChannelTransport, function(channel) {
-            bridge_obj = channel.objects.bridge_obj;
-            initBridgeConnections();
-        });
-    }
+    window.addEventListener('bridgeReady', (e) => {
+        bridge_obj = e.detail;
+        initBridgeConnections();
+    });
 });
 
 function initBridgeConnections() {
