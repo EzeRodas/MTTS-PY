@@ -155,9 +155,10 @@ class SettingsManager:
         Args:
             settings: Partial settings dict to merge in.
         """
-        current = self.get_app_config()
-        current.update(settings)
-        self._write_json(self._settings_path, current)
+        with self._lock:
+            current = self.get_app_config()
+            current.update(settings)
+            self._write_json(self._settings_path, current)
 
     def get_engine_config(self, engine_name: str, default_settings: dict[str, Any]) -> dict[str, Any]:
         """Read an engine-specific configuration file.
@@ -194,14 +195,15 @@ class SettingsManager:
             engine_name: Name used as the JSON filename stem.
             settings: Partial settings dict to merge in.
         """
-        engine_path = Path(self._config_dir) / f"{engine_name}.json"
+        with self._lock:
+            engine_path = Path(self._config_dir) / f"{engine_name}.json"
 
-        current: dict[str, Any] = {}
-        if engine_path.exists():
-            current = self._read_json(engine_path)
+            current: dict[str, Any] = {}
+            if engine_path.exists():
+                current = self._read_json(engine_path)
 
-        current.update(settings)
-        self._write_json(engine_path, current)
+            current.update(settings)
+            self._write_json(engine_path, current)
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -46,6 +46,10 @@ class Bridge(QObject):
         self._model_manager = None
         self.is_dialog_open = False
         self.is_ready = False
+        
+        import threading
+        self._synth_lock = threading.Lock()
+        self._synthesizing = False
 
     def set_model_manager(self, mm):
         """Set the model manager directly (available before controller)."""
@@ -74,11 +78,25 @@ class Bridge(QObject):
     @Slot(str)
     def submitText(self, text: str):
         """Synthesize and play the given text."""
-        if self._controller:
+        if not self._controller:
+            return
+            
+        with self._synth_lock:
+            if self._synthesizing:
+                return
+            self._synthesizing = True
+            
+        def _run_synth():
             try:
                 self._controller.process_input(text)
             except Exception as e:
                 logger.error(f"submitText failed: {e}")
+            finally:
+                with self._synth_lock:
+                    self._synthesizing = False
+
+        import threading
+        threading.Thread(target=_run_synth, daemon=True).start()
 
     # =========================================================================
     # Model & Voice

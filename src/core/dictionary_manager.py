@@ -85,12 +85,9 @@ class DictionaryManager:
                 
             escaped = re.escape(original)
             if entry.get("case_sensitive", False):
-                flag = "(?-i:"
+                parts.append(f"(?P<r{i}>\\b{escaped}\\b)")
             else:
-                flag = "(?i:"
-            
-            # Using named capture group to map back to the entry
-            parts.append(f"(?P<r{i}>{flag}\\b{escaped}\\b))")
+                parts.append(f"(?P<r{i}>(?i:\\b{escaped}\\b))")
             
         if not parts:
             return text
