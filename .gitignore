@@ -12,3 +12,5 @@ __pycache__/
 scratch/
 build/
 AppDir/
+node_modules/
+.pytest_cache/

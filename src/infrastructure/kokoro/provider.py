@@ -325,9 +325,9 @@ class KokoroTTSProvider:
         import queue
         import threading
         
-        # Split text into sentences for streaming
-        # Basic split on punctuation followed by whitespace, keeping the punctuation
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        # Split text into clauses/sentences for streaming to reduce latency on long sentences
+        # Splitting on punctuation followed by whitespace, keeping the punctuation
+        sentences = re.split(r'(?<=[.!?,\;:—])\s+', text)
         sentences = [s.strip() for s in sentences if s.strip()]
         if not sentences:
             return
