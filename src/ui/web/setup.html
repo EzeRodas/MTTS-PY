@@ -11,7 +11,7 @@
         <h1>Welcome to Moon-TTS</h1>
         <p id="mainDesc">Before we start, we need to download the AI voice model. Please select the quality that best fits your system.</p>
 
-        <div id="engineSelectionContainer" style="display: flex; flex-direction: column; flex-grow: 1;">
+        <div id="engineSelectionContainer">
             <div class="model-options">
                 <label class="model-option selected">
                     <input type="radio" name="engineType" value="kokoro" checked>
@@ -27,8 +27,8 @@
             </div>
         </div>
 
-        <div id="qualitySelectionContainer" style="display: none; flex-direction: column; flex-grow: 1;">
-            <p style="color: #a0a0b0; font-size: 14px; margin-bottom: 15px; margin-top: -10px;">Select the model quality for Kokoro:</p>
+        <div id="qualitySelectionContainer">
+            <p>Select the model quality for Kokoro:</p>
             <div class="model-options" id="modelOptions">
                 <label class="model-option selected">
                     <input type="radio" name="modelQuality" value="fp32" checked>

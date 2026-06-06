@@ -58,9 +58,11 @@ function initializeMainControl(api) {
         }
     }
     
-    // Initial check and set interval
+    // Initial check and subscribe to updates
     checkEngineStatus();
-    setInterval(checkEngineStatus, 5000);
+    if (api.settings_updated) {
+        api.settings_updated.connect(checkEngineStatus);
+    }
 
     // Initial config load
 }

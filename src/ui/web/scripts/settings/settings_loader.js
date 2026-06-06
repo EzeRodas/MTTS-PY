@@ -198,5 +198,10 @@ window.addEventListener('bridgeReady', () => {
                 api.app_ready.connect(loadSettings);
             }
         });
+        
+        // Keep UI in sync with backend changes
+        if (api.settings_updated) {
+            api.settings_updated.connect(loadSettings);
+        }
     }
 });

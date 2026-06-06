@@ -221,12 +221,15 @@ def main():
     # -----------------------------------------------------------------
     # Build UI First (Renders UI instantly)
     # -----------------------------------------------------------------
+    from src.core.event_bus import EventBus
+    event_bus = EventBus()
+
     from src.ui.bridge import Bridge
     from src.ui.main_window import MainWindow
     from src.ui.settings_window import SettingsWindow
     from src.ui.tray import TrayIcon
 
-    bridge = Bridge(None)
+    bridge = Bridge(None, event_bus=event_bus)
     main_window = MainWindow(bridge)
     settings_window = SettingsWindow(bridge)
 
@@ -249,7 +252,7 @@ def main():
 
     # Quick parse to check startMinimized and setup status
     from src.core.settings_manager import SettingsManager
-    sm = SettingsManager()
+    sm = SettingsManager(event_bus=event_bus)
     config = sm.get_app_config()
     start_minimized = config.get("startMinimized", False)
     initial_setup_complete = config.get("initialSetupComplete", False)

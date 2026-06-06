@@ -40,7 +40,7 @@
 
                 <div class="settings-section adv-section">
                     <!-- Open on startup -->
-                    <div class="settings-row" id="advOpenOnStartupContainer" style="display: none;">
+                    <div class="settings-row" id="advOpenOnStartupContainer">
                         <h4>Open on startup (Only Windows)</h4>
                         <label class="toggle-label">
                             <input type="checkbox" class="toggle-input" id="advOpenOnStartupCheckbox">
@@ -88,7 +88,7 @@
                             <p id="engineStatusDesc">Loading status...</p>
                         </div>
 
-                        <div id="advEngineSelectionContainer" style="display: flex; flex-direction: column; width: 100%;">
+                        <div id="advEngineSelectionContainer">
                             <div class="model-options">
                                 <label class="model-option selected">
                                     <input type="radio" name="advEngineType" value="kokoro" checked>
@@ -104,8 +104,8 @@
                             </div>
                         </div>
 
-                        <div id="advQualitySelectionContainer" style="display: none; flex-direction: column; width: 100%;">
-                            <p style="color: #4b5563; font-size: 14px; margin-bottom: 10px; margin-top: 0px; font-weight: 600;">Select the model quality for Kokoro:</p>
+                        <div id="advQualitySelectionContainer">
+                            <p>Select the model quality for Kokoro:</p>
                             <div class="model-options" id="engineModelOptions">
                                 <label class="model-option selected">
                                     <input type="radio" name="engineModelQuality" value="fp32" checked>
@@ -141,8 +141,8 @@
                             <div id="engineStatusMessage" class="status-message"></div>
 
                             <div class="engine-actions">
-                                <button class="btn-engine btn-engine-sm btn-skip" style="color: #6b7280;" onclick="advBackToEngine()">< Back</button>
-                                <button class="btn-engine btn-engine-sm btn-delete" id="btnEngineDeleteSelected" onclick="deleteSelectedEngineModel()" style="display: none; margin-right: 10px;">Delete Model</button>
+                                <button class="btn-engine btn-engine-sm btn-skip adv-btn-skip" onclick="advBackToEngine()">< Back</button>
+                                <button class="btn-engine btn-engine-sm btn-delete" id="btnEngineDeleteSelected" onclick="deleteSelectedEngineModel()">Delete Model</button>
                                 <button class="btn-engine btn-engine-sm btn-download" id="btnEngineDownload" onclick="startEngineDownload()">Download & Install</button>
                             </div>
                         </div>

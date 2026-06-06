@@ -54,17 +54,25 @@ class Bridge(QObject):
     download_progress = Signal(int, int, str) # bytes_read, total_bytes, filename
     download_complete = Signal(bool, str)     # success, error_msg
     setup_finished = Signal()                 # Emitted when setup is completed or skipped
+    settings_updated = Signal()               # Emitted when any settings change
 
-    def __init__(self, app_controller=None, parent=None):
+    def __init__(self, app_controller=None, parent=None, event_bus=None):
         super().__init__(parent)
         self._controller = app_controller
         self._model_manager = None
+        self._event_bus = event_bus
         self.is_dialog_open = False
         self.is_ready = False
         
         import threading
         self._synth_lock = threading.Lock()
         self._synthesizing = False
+        
+        if self._event_bus:
+            self._event_bus.subscribe("settings_changed", self._on_settings_changed)
+
+    def _on_settings_changed(self, data):
+        self.settings_updated.emit()
 
     def set_model_manager(self, mm):
         """Set the model manager directly (available before controller)."""

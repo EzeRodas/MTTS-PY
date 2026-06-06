@@ -20,7 +20,7 @@ class SettingsManager:
     missing keys are always filled in automatically.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, event_bus=None) -> None:
         """Initialize the settings manager.
 
         Determines platform-specific config and data directories,
@@ -28,6 +28,7 @@ class SettingsManager:
         """
         import threading
         self._lock = threading.RLock()
+        self._event_bus = event_bus
         self._config_dir, self._data_dir = self._resolve_directories()
         self._migrate_old_configs()
         self._settings_path: Path = Path(self._config_dir) / "settings.json"
@@ -161,6 +162,8 @@ class SettingsManager:
             current = self.get_app_config()
             current.update(settings)
             self._write_json(self._settings_path, current)
+            if self._event_bus:
+                self._event_bus.emit("settings_changed")
 
     def get_engine_config(self, engine_name: str, default_settings: dict[str, Any]) -> dict[str, Any]:
         """Read an engine-specific configuration file.
@@ -206,6 +209,8 @@ class SettingsManager:
 
             current.update(settings)
             self._write_json(engine_path, current)
+            if self._event_bus:
+                self._event_bus.emit("settings_changed")
 
     # ------------------------------------------------------------------
     # Internal helpers
