@@ -38,24 +38,54 @@ const bundles = {
     ]
 };
 
-for (const [bundleName, files] of Object.entries(bundles)) {
-    let concatenatedCode = '';
-    for (const file of files) {
-        const filePath = path.join(srcDir, file);
-        if (fs.existsSync(filePath)) {
-            concatenatedCode += fs.readFileSync(filePath, 'utf8') + '\n';
-        } else {
-            console.error(`Warning: File not found: ${filePath}`);
+const watchMode = process.argv.includes('--watch');
+
+function runBuild() {
+    for (const [bundleName, files] of Object.entries(bundles)) {
+        let concatenatedCode = '';
+        for (const file of files) {
+            const filePath = path.join(srcDir, file);
+            if (fs.existsSync(filePath)) {
+                concatenatedCode += fs.readFileSync(filePath, 'utf8') + '\n';
+            } else {
+                console.error(`Warning: File not found: ${filePath}`);
+            }
         }
+        
+        const result = esbuild.transformSync(concatenatedCode, { 
+            minify: true,
+            target: 'es2020'
+        });
+        
+        fs.writeFileSync(path.join(destDir, bundleName), result.code);
+        console.log(`Created ${bundleName}`);
     }
-    
-    const result = esbuild.transformSync(concatenatedCode, { 
-        minify: true,
-        target: 'es2020'
-    });
-    
-    fs.writeFileSync(path.join(destDir, bundleName), result.code);
-    console.log(`Created ${bundleName}`);
+    console.log('Build complete.');
 }
 
-console.log('Build complete.');
+try {
+    runBuild();
+} catch (err) {
+    console.error('Initial build failed:', err);
+    if (!watchMode) process.exit(1);
+}
+
+if (watchMode) {
+    console.log(`Watching for changes in ${srcDir}...`);
+    let debounceTimeout = null;
+    fs.watch(srcDir, { recursive: true }, (eventType, filename) => {
+        if (!filename) return;
+        // Ignore files inside dist/ or other non-source changes
+        if (filename.includes('dist/')) return;
+        
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => {
+            console.log(`\nChange detected in ${filename}. Rebuilding...`);
+            try {
+                runBuild();
+            } catch (err) {
+                console.error('Rebuild failed:', err);
+            }
+        }, 100);
+    });
+}

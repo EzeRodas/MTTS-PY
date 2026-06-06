@@ -116,22 +116,30 @@ function _checkInstalledStatus(api) {
     if (api.isModelInstalled) {
         api.isModelInstalled(function(installed) {
             if (installed) {
-                if (api.getInstalledPrecisions) {
-                    api.getInstalledPrecisions(function(precJson) {
-                        const precs = JSON.parse(precJson);
-                        const formatted = precs.map(p => p.toUpperCase()).join(", ");
+                const updateDesc = function(engineName) {
+                    if (api.getInstalledPrecisions) {
+                        api.getInstalledPrecisions(function(precJson) {
+                            const precs = JSON.parse(precJson);
+                            const formatted = precs.map(p => p.toUpperCase()).join(", ");
+                            document.getElementById('engineStatusTitle').innerText = "Status: Installed";
+                            document.getElementById('engineStatusTitle').style.color = "#06a159";
+                            document.getElementById('engineStatusDesc').innerText = `Installed precision(s): ${formatted}.`;
+                            document.getElementById('engineStatusCard').style.backgroundColor = "rgba(74, 255, 74, 0.1)";
+                            document.getElementById('engineStatusCard').style.borderColor = "#06a159";
+                        });
+                    } else {
                         document.getElementById('engineStatusTitle').innerText = "Status: Installed";
                         document.getElementById('engineStatusTitle').style.color = "#06a159";
-                        document.getElementById('engineStatusDesc').innerText = `Installed precision(s): ${formatted}.`;
+                        document.getElementById('engineStatusDesc').innerText = `A compatible ${engineName} ONNX model is present on your system.`;
                         document.getElementById('engineStatusCard').style.backgroundColor = "rgba(74, 255, 74, 0.1)";
                         document.getElementById('engineStatusCard').style.borderColor = "#06a159";
-                    });
+                    }
+                };
+
+                if (api.getEngineName) {
+                    api.getEngineName(updateDesc);
                 } else {
-                    document.getElementById('engineStatusTitle').innerText = "Status: Installed";
-                    document.getElementById('engineStatusTitle').style.color = "#06a159";
-                    document.getElementById('engineStatusDesc').innerText = "A compatible Kokoro ONNX model is present on your system.";
-                    document.getElementById('engineStatusCard').style.backgroundColor = "rgba(74, 255, 74, 0.1)";
-                    document.getElementById('engineStatusCard').style.borderColor = "#06a159";
+                    updateDesc("Kokoro");
                 }
                 
                 document.getElementById('btnEngineDelete').style.display = "block";

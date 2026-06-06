@@ -8,6 +8,11 @@ class ModelInstaller(ABC):
     """
 
     @abstractmethod
+    def get_engine_name(self) -> str:
+        """Return the user-friendly name of the engine."""
+        pass
+
+    @abstractmethod
     def get_download_queue(self, precision: str, app_dir: Path) -> list[dict]:
         """
         Return a list of download tasks required to install the specified precision.

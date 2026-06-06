@@ -8,20 +8,21 @@
   },
   "scripts": {
     "build": "node build.js",
+    "watch": "node build.js --watch",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/EzeRodas/MTTS-JS.git"
+    "url": "git+https://github.com/EzeRodas/MTTS-PY.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/EzeRodas/MTTS-JS/issues"
+    "url": "https://github.com/EzeRodas/MTTS-PY/issues"
   },
-  "homepage": "https://github.com/EzeRodas/MTTS-JS#readme",
+  "homepage": "https://github.com/EzeRodas/MTTS-PY#readme",
   "devDependencies": {
     "esbuild": "^0.28.0"
   }

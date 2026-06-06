@@ -472,6 +472,19 @@ class Bridge(QObject):
             return self._model_manager.is_model_installed("kokoro", "")
         return False
 
+    @Slot(result=str)
+    def getEngineName(self) -> str:
+        if self._controller:
+            active_model = self._controller.get_active_model()
+            if active_model:
+                engine_id = active_model.split('_')[0]
+                if self._model_manager:
+                    return self._model_manager.get_engine_name(engine_id)
+        if self._model_manager and self._model_manager._installers:
+            first_engine_id = list(self._model_manager._installers.keys())[0]
+            return self._model_manager.get_engine_name(first_engine_id)
+        return "Kokoro"
+
     @Slot(str, result=bool)
     def isModelInstalledWithPrecision(self, precision: str) -> bool:
         if self._model_manager:

@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 class KokoroInstaller(ModelInstaller):
     """Installer for the Kokoro TTS engine."""
     
+    def get_engine_name(self) -> str:
+        return "Kokoro"
+
     def __init__(self):
         self.models_urls = {
             "fp32": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx",

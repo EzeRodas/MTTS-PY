@@ -246,3 +246,9 @@ class ModelManager:
 
     def is_download_running(self) -> bool:
         return self._worker is not None and self._worker.is_running()
+
+    def get_engine_name(self, engine_id: str) -> str:
+        installer = self._installers.get(engine_id)
+        if installer:
+            return installer.get_engine_name()
+        return "Unknown"
