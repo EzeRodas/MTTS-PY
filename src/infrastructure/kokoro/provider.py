@@ -340,41 +340,10 @@ class KokoroTTSProvider:
         monitoring_device_id = app_config.get("monitoringDevice", "default")
         monitoring_volume = app_config.get("monitoringVolume", 0.8)
 
-        play_queue = queue.Queue()
-        
-        def playback_worker():
-            while True:
-                item = play_queue.get()
-                if item is None:
-                    break
-                chunk_path = item
-                try:
-                    self.audio_service.play(
-                        file_path=chunk_path,
-                        playback=playback,
-                        device_id=device_id,
-                        volume=volume,
-                        monitoring=monitoring,
-                        monitoring_device_id=monitoring_device_id,
-                        monitoring_volume=monitoring_volume,
-                    )
-                except Exception as e:
-                    logger.error(f"Error playing chunk: {e}")
-                finally:
-                    try:
-                        os.remove(chunk_path)
-                    except:
-                        pass
-                play_queue.task_done()
-
-        worker_thread = threading.Thread(target=playback_worker, daemon=True)
-        worker_thread.start()
-
         master_samples = []
         sample_rate_used = 24000
 
         try:
-            import soundfile as sf
             import numpy as np
             for sentence in sentences:
                 samples, sample_rate = tts.create(
@@ -386,16 +355,15 @@ class KokoroTTSProvider:
                 sample_rate_used = sample_rate
                 master_samples.append(samples)
                 
-                tmp_fd, tmp_path = tempfile.mkstemp(suffix=".wav")
-                os.close(tmp_fd)
-                sf.write(tmp_path, samples, sample_rate)
-                play_queue.put(tmp_path)
+                if playback:
+                    self.audio_service.enqueue_chunk(samples, sample_rate, device_id, volume)
+                    
+                if monitoring and monitoring_device_id is not None:
+                    # Enqueue for monitoring device as well
+                    self.audio_service.enqueue_chunk(samples, sample_rate, monitoring_device_id, monitoring_volume)
                 
         except Exception as e:
             logger.error(f"Synthesis failed during streaming: {e}")
-            
-        play_queue.put(None)
-        worker_thread.join()
 
         # Write the full synthesized text to a single file for history
         if master_samples:
@@ -428,32 +396,21 @@ class KokoroTTSProvider:
             lang=lang,
         )
 
-        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".wav")
-        os.close(tmp_fd)
+        app_config = self.settings_manager.get_app_config()
+        monitoring = app_config.get("monitoring", False)
+        if not monitoring:
+            logger.warning("Monitoring is disabled, preview will not play.")
+            return
 
-        try:
-            import soundfile as sf
-            sf.write(tmp_path, samples, sample_rate)
+        monitoring_device_id = app_config.get("monitoringDevice", "default")
+        monitoring_volume = app_config.get("monitoringVolume", 0.8)
 
-            app_config = self.settings_manager.get_app_config()
-            monitoring = app_config.get("monitoring", False)
-            if not monitoring:
-                logger.warning("Monitoring is disabled, preview will not play.")
-                return
-
-            monitoring_device_id = app_config.get("monitoringDevice", "default")
-            monitoring_volume = app_config.get("monitoringVolume", 0.8)
-
-            self.audio_service.play(
-                file_path=tmp_path,
-                playback=False,
-                monitoring=True,
-                monitoring_device_id=monitoring_device_id,
-                monitoring_volume=monitoring_volume,
-            )
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+        self.audio_service.enqueue_chunk(
+            samples, 
+            sample_rate, 
+            monitoring_device_id, 
+            monitoring_volume
+        )
 
     def generate_to_file(self, text: str, file_path: str) -> None:
         """Synthesise *text* and write the result directly to *file_path*.

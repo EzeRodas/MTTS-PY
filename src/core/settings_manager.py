@@ -26,6 +26,8 @@ class SettingsManager:
         Determines platform-specific config and data directories,
         sets up the settings file path, and defines default application settings.
         """
+        import threading
+        self._lock = threading.RLock()
         self._config_dir, self._data_dir = self._resolve_directories()
         self._migrate_old_configs()
         self._settings_path: Path = Path(self._config_dir) / "settings.json"

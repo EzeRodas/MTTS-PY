@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
 from src.core.dictionary_manager import DictionaryManager
 
+logger = logging.getLogger(__name__)
+
 class AppController:
     """
     Facade coordinating the core domain services of the TTS application.
@@ -75,7 +77,7 @@ class AppController:
         """Return available TTS engine identifiers with precision suffix."""
         if hasattr(self._tts_service, "is_available") and self._tts_service.is_available():
             if self._model_manager and hasattr(self._model_manager, "get_installed_precisions"):
-                precisions = self._model_manager.get_installed_precisions()
+                precisions = self._model_manager.get_installed_precisions("kokoro")
                 if precisions:
                     return [f"kokoro_{p}" for p in precisions]
             config = self._settings_manager.get_app_config()

@@ -69,35 +69,58 @@ function initBridgeConnections() {
         });
     }
 
-    // Listen for progress
-    bridge_obj.download_progress.connect(function(bytesRead, totalBytes, filename) {
-        document.getElementById('progressFile').innerText = `Downloading: ${filename}`;
-        
-        let percent = 0;
-        if (totalBytes > 0) {
-            percent = (bytesRead / totalBytes) * 100;
+    // Listen for progress updates
+    if (bridge_obj.download_progress) {
+        if (bridge_obj._setup_download_progress_cb) {
+            try { bridge_obj.download_progress.disconnect(bridge_obj._setup_download_progress_cb); } catch(e) {}
         }
-        
-        document.getElementById('progressBar').style.width = `${percent}%`;
-        
-        const mbRead = (bytesRead / (1024 * 1024)).toFixed(1);
-        const mbTotal = totalBytes > 0 ? (totalBytes / (1024 * 1024)).toFixed(1) : "?";
-        document.getElementById('progressText').innerText = `${mbRead} MB / ${mbTotal} MB (${percent.toFixed(0)}%)`;
-    });
-
+        bridge_obj._setup_download_progress_cb = function(bytesRead, totalBytes, filename) {
+            const fileEl = document.getElementById('progressFile');
+            if (fileEl) fileEl.innerText = `Downloading: ${filename}`;
+            
+            let percent = 0;
+            if (totalBytes > 0) {
+                percent = (bytesRead / totalBytes) * 100;
+            }
+            const barEl = document.getElementById('progressBar');
+            if (barEl) barEl.style.width = `${percent}%`;
+            
+            const textEl = document.getElementById('progressText');
+            if (textEl) {
+                const mbRead = (bytesRead / (1024 * 1024)).toFixed(1);
+                const mbTotal = totalBytes > 0 ? (totalBytes / (1024 * 1024)).toFixed(1) : "?";
+                textEl.innerText = `${mbRead} MB / ${mbTotal} MB (${percent.toFixed(0)}%)`;
+            }
+        };
+        bridge_obj.download_progress.connect(bridge_obj._setup_download_progress_cb);
+    }
+    
     // Listen for completion
-    bridge_obj.download_complete.connect(function(success, errorMsg) {
-        isDownloading = false;
-        if (success) {
-            bridge_obj.finishSetup();
-        } else {
-            showSetupToast("Error: " + errorMsg, "#ff4a4a");
-            document.getElementById('btnDownload').disabled = false;
-            document.getElementById('btnSkip').disabled = false;
-            document.getElementById('modelOptions').style.opacity = "1";
-            document.getElementById('progressContainer').style.display = "none";
+    if (bridge_obj.download_complete) {
+        if (bridge_obj._setup_download_complete_cb) {
+            try { bridge_obj.download_complete.disconnect(bridge_obj._setup_download_complete_cb); } catch(e) {}
         }
-    });
+        bridge_obj._setup_download_complete_cb = function(success, errorMsg) {
+            isDownloading = false;
+            
+            if (success) {
+                bridge_obj.finishSetup();
+            } else {
+                showSetupToast("Error: " + errorMsg, "#ff4a4a");
+                const btnEl = document.getElementById('btnDownload');
+                if (btnEl) btnEl.disabled = false;
+                const skipBtn = document.getElementById('btnSkip');
+                if (skipBtn) skipBtn.disabled = false;
+                
+                const optsEl = document.getElementById('modelOptions');
+                if (optsEl) optsEl.style.opacity = "1";
+                
+                const progEl = document.getElementById('progressContainer');
+                if (progEl) progEl.style.display = "none";
+            }
+        };
+        bridge_obj.download_complete.connect(bridge_obj._setup_download_complete_cb);
+    }
 }
 
 function startDownload() {
@@ -111,9 +134,6 @@ function startDownload() {
 
     const selected = document.querySelector('input[name="modelQuality"]:checked').value;
     lastSetupDownloadedModel = selected;
-    console.log("startDownload: selected precision =", selected);
-    console.log("startDownload: bridge_obj =", bridge_obj);
-    console.log("startDownload: bridge_obj.downloadModel =", bridge_obj.downloadModel);
     
     isDownloading = true;
     document.getElementById('btnDownload').disabled = true;
@@ -126,9 +146,7 @@ function startDownload() {
     document.getElementById('progressBar').style.width = "0%";
     document.getElementById('progressText').innerText = "Starting download...";
     
-    console.log("startDownload: calling bridge_obj.downloadModel(" + selected + ")");
     bridge_obj.downloadModel(selected);
-    console.log("startDownload: downloadModel call returned");
 }
 
 function deleteModel() {

@@ -155,7 +155,7 @@ body.advanced-body { margin: 0; padding: 0; width: 100%; height: 100%; }
 .dict-item { background: white; padding: 12px; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
 
 /* Initial Setup CSS */
-body.setup-body { background-color: transparent; margin: 0; display: flex; justify-content: center; align-items: center; height: 800px; width: 500px; color: white; overflow: hidden; border-radius: 12px; }
+body.setup-body { background-color: transparent; margin: 0; display: flex; justify-content: center; align-items: center; height: 600px; width: 500px; color: white; overflow: hidden; border-radius: 12px; }
 .setup-container { width: 100%; height: 100%; display: flex; flex-direction: column; padding: 30px; box-sizing: border-box; background: linear-gradient(145deg, #16161d, #101015); border-radius: 12px; }
 .setup-container h1 { margin-top: 0; font-size: 24px; font-weight: 600; color: #e0e0e0; margin-bottom: 10px; }
 .setup-container p { color: #a0a0b0; font-size: 14px; margin-bottom: 25px; line-height: 1.5; }
@@ -168,8 +168,8 @@ body.setup-body { background-color: transparent; margin: 0; display: flex; justi
 .model-option.selected { border-color: #6b6bff; background-color: rgba(107, 107, 255, 0.1); }
 .model-option input[type="radio"] { margin-right: 15px; width: 18px; height: 18px; accent-color: #6b6bff; }
 .model-info { display: flex; flex-direction: column; }
-.model-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; color: white; }
-.model-option.selected .model-title { color: #333; }
+.model-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; color: #e0e0e0; }
+.model-option.selected .model-title { color: #e0e0e0; }
 .model-desc { font-size: 13px; color: #777788; }
 .progress-container { display: none; flex-direction: column; gap: 8px; margin-bottom: 20px; }
 .progress-bar-bg { width: 100%; height: 8px; background-color: #2a2a35; border-radius: 4px; overflow: hidden; }
@@ -179,11 +179,11 @@ body.setup-body { background-color: transparent; margin: 0; display: flex; justi
 .btn-engine { padding: 10px 20px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 14px; transition: background-color 0.2s ease; }
 .btn-engine.btn-sm { padding: 8px 16px; }
 .btn-skip { background-color: transparent; color: #a0a0b0; }
-.btn-skip:hover { color: white; background-color: rgba(255, 255, 255, 0.05); }
-.btn-download { background-color: #6b6bff; color: white; }
+.btn-skip:hover { color: #e0e0e0; background-color: rgba(255, 255, 255, 0.05); }
+.btn-download { background-color: #6b6bff; color: #e0e0e0; }
 .btn-download:hover { background-color: #5a5ae0; }
 .btn-download:disabled { background-color: #4a4a60; color: #888899; cursor: not-allowed; }
-.btn-delete { background-color: #ff4a4a; color: white; display: none; }
+.btn-delete { background-color: #ff4a4a; color: #e0e0e0; display: none; }
 .btn-delete:hover { background-color: #e03a3a; }
 .status-message { font-size: 13px; color: #ff6b6b; margin-top: 10px; margin-bottom: 15px; text-align: right; }
 .engine-status-card { background-color: rgba(107, 107, 255, 0.1); border: 1px solid #6b6bff; padding: 15px; border-radius: 8px; margin-bottom: 20px; }

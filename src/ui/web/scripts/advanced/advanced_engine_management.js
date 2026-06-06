@@ -30,45 +30,57 @@ function loadEngineManagementTab() {
 
     checkEngineStatus(api);
     
-    // Listen for download progress
-    if (api.download_progress && !api._download_progress_bound) {
-        api.download_progress.connect(function(bytesRead, totalBytes, filename) {
-            document.getElementById('engineProgressFile').innerText = `Downloading: ${filename}`;
+    // Safely bind download_progress
+    if (api.download_progress) {
+        if (api._engine_download_progress_cb) {
+            try { api.download_progress.disconnect(api._engine_download_progress_cb); } catch(e) {}
+        }
+        api._engine_download_progress_cb = function(bytesRead, totalBytes, filename) {
+            const fileEl = document.getElementById('engineProgressFile');
+            if (fileEl) fileEl.innerText = `Downloading: ${filename}`;
             
             let percent = 0;
             if (totalBytes > 0) {
                 percent = (bytesRead / totalBytes) * 100;
             }
+            const barEl = document.getElementById('engineProgressBar');
+            if (barEl) barEl.style.width = `${percent}%`;
             
-            document.getElementById('engineProgressBar').style.width = `${percent}%`;
-            
-            const mbRead = (bytesRead / (1024 * 1024)).toFixed(1);
-            const mbTotal = totalBytes > 0 ? (totalBytes / (1024 * 1024)).toFixed(1) : "?";
-            document.getElementById('engineProgressText').innerText = `${mbRead} MB / ${mbTotal} MB (${percent.toFixed(0)}%)`;
-        });
-        api._download_progress_bound = true;
+            const textEl = document.getElementById('engineProgressText');
+            if (textEl) {
+                const mbRead = (bytesRead / (1024 * 1024)).toFixed(1);
+                const mbTotal = totalBytes > 0 ? (totalBytes / (1024 * 1024)).toFixed(1) : "?";
+                textEl.innerText = `${mbRead} MB / ${mbTotal} MB (${percent.toFixed(0)}%)`;
+            }
+        };
+        api.download_progress.connect(api._engine_download_progress_cb);
     }
     
-    // Listen for completion
-    if (api.download_complete && !api._download_complete_bound) {
-        api.download_complete.connect(function(success, errorMsg) {
+    // Safely bind download_complete
+    if (api.download_complete) {
+        if (api._engine_download_complete_cb) {
+            try { api.download_complete.disconnect(api._engine_download_complete_cb); } catch(e) {}
+        }
+        api._engine_download_complete_cb = function(success, errorMsg) {
             isEngineDownloading = false;
             if (success) {
                 const modelName = lastDownloadedModel ? `Kokoro (${lastDownloadedModel.toUpperCase()})` : "Model";
                 showEngineToast(`${modelName} installed successfully. Please restart the app.`, "#4aff4a");
                 checkEngineStatus(api);
-                
-                document.getElementById('btnEngineDownload').disabled = false;
-                document.getElementById('engineModelOptions').style.opacity = "1";
-                document.getElementById('engineProgressContainer').style.display = "none";
             } else {
                 showEngineToast("Error: " + errorMsg, "#ff4a4a");
-                document.getElementById('btnEngineDownload').disabled = false;
-                document.getElementById('engineModelOptions').style.opacity = "1";
-                document.getElementById('engineProgressContainer').style.display = "none";
             }
-        });
-        api._download_complete_bound = true;
+            
+            const btnEl = document.getElementById('btnEngineDownload');
+            if (btnEl) btnEl.disabled = false;
+            
+            const optsEl = document.getElementById('engineModelOptions');
+            if (optsEl) optsEl.style.opacity = "1";
+            
+            const progEl = document.getElementById('engineProgressContainer');
+            if (progEl) progEl.style.display = "none";
+        };
+        api.download_complete.connect(api._engine_download_complete_cb);
     }
 }
 

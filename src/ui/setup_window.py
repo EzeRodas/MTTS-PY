@@ -15,13 +15,13 @@ class SetupWindow(BaseWebWindow):
             bridge=bridge, 
             html_path=html_path, 
             frameless=True, 
-            transparent=False, 
+            transparent=True, 
             parent=None, 
             console_prefix="Setup JS"
         )
         self.setWindowTitle("Moon-TTS Initial Setup")
-        self.resize(800, 500)
-        self.setStyleSheet("background-color: #0f0f13; border-radius: 12px; border: 1px solid #2a2a35;")
+        self.resize(500, 600)
+        self.setStyleSheet("background-color: transparent;")
         
         # Enable dragging the window
         self._web_view.page().loadFinished.connect(self._inject_drag_script)
@@ -48,12 +48,12 @@ class SetupWindow(BaseWebWindow):
             window.dragInjected = true;
             document.addEventListener('mousedown', (e) => {
                 if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'LABEL') {
-                    bridge.dragStart(e.screenX, e.screenY);
+                    if (window.api) window.api.startDrag(e.screenX, e.screenY);
                 }
             });
             document.addEventListener('mousemove', (e) => {
                 if (e.buttons === 1) {
-                    bridge.dragMove(e.screenX, e.screenY);
+                    if (window.api) window.api.doDrag(e.screenX, e.screenY);
                 }
             });
         }

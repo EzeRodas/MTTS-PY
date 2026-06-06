@@ -1,29 +1,24 @@
 """Audio playback service for Moon-TTS.
 
-Provides cross-platform audio device enumeration and WAV playback.
-On Linux, uses native PipeWire/PulseAudio commands (pactl/wpctl/paplay/pw-play)
-for accurate device listing and volume controls.
-On Windows/macOS/other, uses sounddevice.
+Provides cross-platform audio device enumeration and gapless in-memory WAV playback
+using sounddevice and a background queue.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 import sys
-import subprocess
 import threading
+import queue
+import numpy as np
+import sounddevice as sd
 from typing import Any
 
 logger = logging.getLogger("Moon-TTS.AudioService")
 
 
 class AudioService:
-    """Handles audio device discovery and WAV file playback."""
-
-    # ------------------------------------------------------------------
-    # Device enumeration
-    # ------------------------------------------------------------------
+    """Handles audio device discovery and gapless playback."""
 
     _cached_devices: list[dict[str, Any]] = [
         {"id": "default", "name": "System Default"},
@@ -31,14 +26,20 @@ class AudioService:
     _is_querying: bool = False
     _lock = threading.Lock()
 
+    def __init__(self):
+        self._play_queue = queue.Queue()
+        self._stop_event = threading.Event()
+        self._samplerate = 24000
+        self._worker_thread = threading.Thread(target=self._playback_worker, daemon=True)
+        self._worker_thread.start()
+
+    # ------------------------------------------------------------------
+    # Device enumeration
+    # ------------------------------------------------------------------
+
     @staticmethod
     def get_devices() -> list[dict[str, Any]]:
-        """Return a list of available output audio devices.
-
-        Each entry is a dict with:
-            * ``id``   – string or integer device identifier.
-            * ``name`` – human-readable device name.
-        """
+        """Return a list of available output audio devices."""
         with AudioService._lock:
             if not AudioService._is_querying:
                 AudioService._is_querying = True
@@ -48,79 +49,67 @@ class AudioService:
     @staticmethod
     def _query_devices_background() -> None:
         try:
-            devices = AudioService._perform_query()
-            with AudioService._lock:
-                AudioService._cached_devices = devices
-        except Exception as e:
-            logger.error(f"Error in background device query: {e}")
-        finally:
-            with AudioService._lock:
-                AudioService._is_querying = False
-
-    @staticmethod
-    def _perform_query() -> list[dict[str, Any]]:
-        import sounddevice as sd
-        devices: list[dict[str, Any]] = [
-            {"id": "default", "name": "System Default"},
-        ]
-
-        if sys.platform == "linux":
-            # Priority 1: Parse pactl list sinks
-            try:
-                res = subprocess.run(
-                    ["pactl", "list", "sinks"],
-                    capture_output=True,
-                    text=True,
-                    errors="ignore",
-                    check=False,
-                )
-                if res.returncode == 0:
-                    current_name = None
-                    for line in res.stdout.splitlines():
-                        if line.strip().startswith("Name:"):
-                            current_name = line.split("Name:", 1)[1].strip()
-                        elif line.strip().startswith("Description:") and current_name:
-                            desc = line.split("Description:", 1)[1].strip()
-                            devices.append({"id": current_name, "name": desc})
-                            current_name = None
-            except Exception as e:
-                logger.debug(f"pactl sinks query failed: {e}")
-
-            # Priority 2: Parse wpctl status
-            if len(devices) <= 1:
+            import re
+            import subprocess
+            devices: list[dict[str, Any]] = [
+                {"id": "default", "name": "System Default"},
+            ]
+            
+            if sys.platform == "linux":
+                # Priority 1: Parse pactl list sinks
                 try:
                     res = subprocess.run(
-                        ["wpctl", "status"],
+                        ["pactl", "list", "sinks"],
                         capture_output=True,
                         text=True,
                         errors="ignore",
                         check=False,
                     )
-                    if res.returncode == 0 and "Sinks:" in res.stdout:
-                        sinks_part = res.stdout.split("Sinks:")[1].split("Sources:")[0]
-                        for line in sinks_part.splitlines():
-                            match = re.search(r'(?:[*\s]*?)(\d+)\.\s+(.*?)(?:\s+\[vol|$)', line)
-                            if match:
-                                devices.append({
-                                    "id": match.group(1),
-                                    "name": match.group(2).strip(),
-                                })
+                    if res.returncode == 0:
+                        current_name = None
+                        for line in res.stdout.splitlines():
+                            if line.strip().startswith("Name:"):
+                                current_name = line.split("Name:", 1)[1].strip()
+                            elif line.strip().startswith("Description:") and current_name:
+                                desc = line.split("Description:", 1)[1].strip()
+                                devices.append({"id": current_name, "name": desc})
+                                current_name = None
                 except Exception as e:
-                    logger.debug(f"wpctl sinks query failed: {e}")
+                    logger.debug(f"pactl sinks query failed: {e}")
 
-            # Fallback to sounddevice if no devices found
-            if len(devices) <= 1:
-                try:
-                    all_devs = sd.query_devices()
-                    for idx, dev in enumerate(all_devs):
-                        if dev.get("max_output_channels", 0) > 0:  # type: ignore[union-attr]
-                            devices.append({"id": idx, "name": dev["name"]})  # type: ignore[index]
-                except Exception as e:
-                    logger.warning(f"Fallback sounddevice query failed: {e}")
+                # Priority 2: Parse wpctl status
+                if len(devices) <= 1:
+                    try:
+                        res = subprocess.run(
+                            ["wpctl", "status"],
+                            capture_output=True,
+                            text=True,
+                            errors="ignore",
+                            check=False,
+                        )
+                        if res.returncode == 0 and "Sinks:" in res.stdout:
+                            sinks_part = res.stdout.split("Sinks:")[1].split("Sources:")[0]
+                            for line in sinks_part.splitlines():
+                                match = re.search(r'(?:[*\s]*?)(\d+)\.\s+(.*?)(?:\s+\[vol|$)', line)
+                                if match:
+                                    devices.append({
+                                        "id": match.group(1),
+                                        "name": match.group(2).strip(),
+                                    })
+                    except Exception as e:
+                        logger.debug(f"wpctl sinks query failed: {e}")
 
-        else:
-            # Windows/macOS/other: Use sounddevice directly
-            try:
+                # Fallback to sounddevice if no devices found
+                if len(devices) <= 1:
+                    try:
+                        all_devs = sd.query_devices()
+                        for idx, dev in enumerate(all_devs):
+                            if dev.get("max_output_channels", 0) > 0:
+                                devices.append({"id": idx, "name": dev["name"]})
+                    except Exception as e:
+                        logger.warning(f"Fallback sounddevice query failed: {e}")
+
+            else:
                 all_devs = sd.query_devices()
                 try:
                     host_apis = sd.query_hostapis()
@@ -139,188 +128,180 @@ class AudioService:
                         if 0 <= api_idx < len(host_apis):
                             api_name = host_apis[api_idx].get("name", "")
 
-                        # On Windows, filter out non-WASAPI devices to prevent duplicates and legacy name truncation
                         if is_windows and has_wasapi and api_name != "Windows WASAPI":
                             continue
 
-                        name = dev["name"]
-                        devices.append({"id": idx, "name": name})  # type: ignore[index]
-            except Exception as e:
-                logger.error(f"Failed to query sounddevice: {e}")
+                        devices.append({"id": idx, "name": dev["name"]})
 
-        return devices
+            with AudioService._lock:
+                AudioService._cached_devices = devices
+        except Exception as e:
+            logger.error(f"Error in background device query: {e}")
+        finally:
+            with AudioService._lock:
+                AudioService._is_querying = False
 
     # ------------------------------------------------------------------
     # Playback helper
     # ------------------------------------------------------------------
 
-    def _play_on_device(
+    def enqueue_chunk(
         self,
-        file_path: str,
-        device_id: Any,
-        volume: float,
+        chunk: np.ndarray,
+        samplerate: int,
+        device_id: Any = None,
+        volume: float = 1.0,
     ) -> None:
-        """Play WAV file on a target device using appropriate backend."""
-        if sys.platform == "linux":
-            vol_int = int(volume * 65536)
-
-            # Target specific device
-            if device_id and device_id != "default":
-                # Try paplay
-                try:
-                    subprocess.run(
-                        ["paplay", "-d", str(device_id), f"--volume={vol_int}", file_path],
-                        check=True,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    return
-                except Exception:
-                    pass
-
-                # Try pw-play
-                try:
-                    subprocess.run(
-                        ["pw-play", "--target", str(device_id), f"--volume={volume}", file_path],
-                        check=True,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    return
-                except Exception:
-                    pass
-
-                # Try aplay
-                try:
-                    subprocess.run(
-                        ["aplay", "-D", str(device_id), file_path],
-                        check=True,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    return
-                except Exception:
-                    pass
-
-            # Default device playback
-            try:
-                subprocess.run(
-                    ["paplay", f"--volume={vol_int}", file_path],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                return
-            except Exception:
-                pass
-
-            try:
-                subprocess.run(
-                    ["pw-play", f"--volume={volume}", file_path],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                return
-            except Exception:
-                pass
-
-            try:
-                subprocess.run(
-                    ["aplay", file_path],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                return
-            except Exception:
-                pass
-
-            logger.warning("All Linux CLI playback utilities failed. Falling back to sounddevice.")
-
-        # Fallback (Linux defaults) or primary (macOS/Windows) sounddevice playback
-        try:
-            import numpy as np
-            import sounddevice as sd
-            import soundfile as sf
-
-            data, samplerate = sf.read(file_path, dtype="float32")
+        """Enqueue an in-memory NumPy array for gapless playback."""
+        # Resample to 24000Hz if needed
+        if samplerate != self._samplerate:
+            duration = len(chunk) / samplerate
+            num_samples = int(duration * self._samplerate)
             
-            # Resolve device ID to integer for PortAudio
-            resolved_dev = None
-            if device_id and device_id != "default":
+            X = np.fft.fft(chunk)
+            new_X = np.zeros(num_samples, dtype=X.dtype)
+            keep = min(len(chunk), num_samples)
+            mid = keep // 2
+            if keep % 2 == 0:
+                new_X[:mid] = X[:mid]
+                new_X[-mid+1:] = X[-mid+1:]
+                nyquist = X[mid] if mid < len(X) else 0.0
+                new_X[mid] += nyquist * 0.5
+                if num_samples % 2 == 0 and num_samples - mid < num_samples:
+                    new_X[num_samples - mid] += nyquist * 0.5
+            else:
+                new_X[:mid+1] = X[:mid+1]
+                new_X[-mid:] = X[-mid:]
+            y = np.fft.ifft(new_X)
+            chunk = np.real(y) * (float(num_samples) / len(chunk))
+            chunk = chunk.astype(np.float32)
+
+        # Apply volume
+        chunk = chunk * volume
+
+        self._play_queue.put((chunk, device_id))
+
+    def flush(self):
+        """Wait for all currently enqueued chunks to finish playing."""
+        self._play_queue.join()
+
+    def _playback_worker(self):
+        """Background thread that continuously writes chunks to the output stream."""
+        import subprocess
+        stream = None
+        proc = None
+        current_device = None
+
+        def close_streams():
+            nonlocal stream, proc
+            if stream:
                 try:
-                    resolved_dev = int(device_id)
-                except (TypeError, ValueError):
+                    stream.stop()
+                    stream.close()
+                except Exception:
                     pass
-            
-            def stop(self) -> None:
-                """Stop any ongoing playback."""
-                # This is a stub for future implementation where threading may need cancellation.
-                pass
+                stream = None
+            if proc:
+                try:
+                    proc.stdin.close()
+                    proc.wait(timeout=1.0)
+                except Exception:
+                    pass
+                proc = None
 
-            def play_with_config(self, file_path: str, config: dict[str, Any]) -> None:
-                """Helper to extract playback settings from app config and play."""
-                self.play(
-                    file_path=file_path,
-                    playback=config.get("playback", True),
-                    device_id=config.get("playbackDevice", "default"),
-                    volume=config.get("volume", 0.8),
-                    monitoring=config.get("monitoring", False),
-                    monitoring_device_id=config.get("monitoringDevice", "default"),
-                    monitoring_volume=config.get("monitoringVolume", 0.8),
-                )
-
-            # Query target device info
-            target_sr = samplerate
-            max_channels = 1
+        while not self._stop_event.is_set():
             try:
-                dev_info = sd.query_devices(device=resolved_dev, kind="output")
-                target_sr = int(dev_info.get("default_samplerate", samplerate))
-                max_channels = int(dev_info.get("max_output_channels", 1))
-            except Exception as e:
-                logger.debug(f"Could not query device info: {e}")
+                item = self._play_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
 
-            # Resample mono audio if necessary
-            if target_sr != samplerate:
-                logger.info(f"Resampling audio from {samplerate}Hz to native device rate {target_sr}Hz")
-                duration = len(data) / samplerate
-                num_samples = int(duration * target_sr)
+            if item is None:
+                close_streams()
+                self._play_queue.task_done()
+                continue
+
+            chunk, device_id = item
+
+            if (stream is None and proc is None) or current_device != device_id:
+                close_streams()
+                current_device = device_id
                 
-                # Perform high-quality FFT resampling using numpy
-                X = np.fft.fft(data)
-                new_X = np.zeros(num_samples, dtype=X.dtype)
-                keep = min(len(data), num_samples)
-                mid = keep // 2
-                if keep % 2 == 0:
-                    new_X[:mid] = X[:mid]
-                    new_X[-mid+1:] = X[-mid+1:]
-                    nyquist = X[mid] if mid < len(X) else 0.0
-                    new_X[mid] += nyquist * 0.5
-                    if num_samples % 2 == 0 and num_samples - mid < num_samples:
-                        new_X[num_samples - mid] += nyquist * 0.5
-                else:
-                    new_X[:mid+1] = X[:mid+1]
-                    new_X[-mid:] = X[-mid:]
-                y = np.fft.ifft(new_X)
-                data = np.real(y) * (float(num_samples) / len(data))
-                data = data.astype(np.float32)
-                samplerate = target_sr
+                # Check if we should use paplay (Linux)
+                use_paplay = False
+                if sys.platform == "linux":
+                    import shutil
+                    if shutil.which("paplay"):
+                        use_paplay = True
+                        cmd = ["paplay", "--raw", "--channels=1", f"--rate={self._samplerate}", "--format=float32le"]
+                        if device_id and str(device_id).lower() != "default":
+                            cmd.extend(["-d", str(device_id)])
+                        try:
+                            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                        except Exception as e:
+                            logger.error(f"Failed to start paplay stream: {e}")
+                            proc = None
+                            use_paplay = False
 
-            # Convert mono to stereo if device supports/requires multi-channel output
-            if len(data.shape) == 1 and max_channels >= 2:
-                logger.debug("Converting mono stream to stereo for device compatibility.")
-                data = np.column_stack((data, data))
+                # Fallback to sounddevice
+                if not use_paplay:
+                    resolved_dev = None
+                    if device_id and str(device_id).lower() != "default":
+                        try:
+                            resolved_dev = int(device_id)
+                        except ValueError:
+                            pass
+                    try:
+                        stream = sd.OutputStream(
+                            samplerate=self._samplerate,
+                            channels=1,
+                            device=resolved_dev,
+                            dtype='float32'
+                        )
+                        stream.start()
+                    except Exception as e:
+                        logger.error(f"Failed to open audio stream: {e}")
+                        self._play_queue.task_done()
+                        continue
 
-            # Play on target device
-            sd.play(data * volume, samplerate=samplerate, device=resolved_dev)
-            sd.wait()
+            try:
+                if proc and proc.stdin:
+                    proc.stdin.write(chunk.tobytes())
+                    proc.stdin.flush()
+                elif stream:
+                    stream.write(chunk)
+            except Exception as e:
+                logger.error(f"Error writing to audio stream: {e}")
+                close_streams()
+
+            self._play_queue.task_done()
+
+    def stop(self) -> None:
+        """Stop playback immediately by clearing the queue."""
+        with self._play_queue.mutex:
+            self._play_queue.queue.clear()
+        self._play_queue.put(None)
+
+    def play_with_config(self, file_path: str, config: dict[str, Any]) -> None:
+        """Legacy helper to read a WAV file and enqueue it."""
+        if not config.get("playback", True):
+            return
+            
+        import soundfile as sf
+        try:
+            data, samplerate = sf.read(file_path, dtype="float32")
+            if len(data.shape) > 1:
+                # convert stereo to mono
+                data = data.mean(axis=1)
+                
+            self.enqueue_chunk(
+                data, 
+                samplerate, 
+                config.get("playbackDevice", "default"), 
+                config.get("volume", 0.8)
+            )
+            # We don't join here because it blocks UI. The background thread handles it.
         except Exception as e:
-            logger.error(f"sounddevice playback failed: {e}")
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+            logger.error(f"Failed to read/play file {file_path}: {e}")
 
     def play(
         self,
@@ -332,27 +313,23 @@ class AudioService:
         monitoring_device_id: Any = None,
         monitoring_volume: float = 1.0,
     ) -> None:
-        """Read a WAV file and play it on one or two devices."""
-        need_monitor = monitoring and monitoring_device_id is not None
-
-        if playback and need_monitor:
-            primary_thread = threading.Thread(
-                target=self._play_on_device,
-                args=(file_path, device_id, volume),
-                daemon=True,
-            )
-            monitor_thread = threading.Thread(
-                target=self._play_on_device,
-                args=(file_path, monitoring_device_id, monitoring_volume),
-                daemon=True,
-            )
-            primary_thread.start()
-            monitor_thread.start()
-            primary_thread.join()
-            monitor_thread.join()
-
-        elif playback:
-            self._play_on_device(file_path, device_id, volume)
-
-        elif need_monitor:
-            self._play_on_device(file_path, monitoring_device_id, monitoring_volume)
+        """Legacy play method wrapper."""
+        if not playback and not monitoring:
+            return
+            
+        import soundfile as sf
+        try:
+            data, samplerate = sf.read(file_path, dtype="float32")
+            if len(data.shape) > 1:
+                data = data.mean(axis=1)
+                
+            if playback:
+                self.enqueue_chunk(data, samplerate, device_id, volume)
+                
+            if monitoring and monitoring_device_id is not None:
+                # We enqueue monitoring separately. Note: queue processes sequentially.
+                # True simultaneous playback to two devices requires two output streams.
+                # For now, we queue it sequentially to keep it simple.
+                self.enqueue_chunk(data, samplerate, monitoring_device_id, monitoring_volume)
+        except Exception as e:
+            logger.error(f"Failed to read/play file {file_path}: {e}")

@@ -6,6 +6,8 @@ from pathlib import Path
 import logging
 import threading
 
+from src.infrastructure.kokoro.installer import KokoroInstaller
+
 logger = logging.getLogger(__name__)
 
 class DownloadWorker:
@@ -59,7 +61,11 @@ class DownloadWorker:
                         while True:
                             if self._is_cancelled:
                                 out_file.close()
-                                os.remove(self.dest_path)
+                                if os.path.exists(self.dest_path):
+                                    try:
+                                        os.remove(self.dest_path)
+                                    except Exception:
+                                        pass
                                 self._is_running = False
                                 if self._on_finished:
                                     self._on_finished(False, "Download cancelled")
@@ -71,15 +77,25 @@ class DownloadWorker:
                             
                             out_file.write(chunk)
                             bytes_read += len(chunk)
-                            if self._on_progress:
-                                self._on_progress(bytes_read, total_bytes)
+                            
+                            # Throttle progress updates to ~15 FPS to prevent UI freeze
+                            current_time = time.time()
+                            last_time = getattr(self, '_last_progress_time', 0)
+                            if current_time - last_time > 0.05 or bytes_read == total_bytes:
+                                if self._on_progress:
+                                    self._on_progress(bytes_read, total_bytes)
+                                self._last_progress_time = current_time
+                    
+                    # Ensure 100% progress is emitted if we broke out early
+                    if self._on_progress:
+                        self._on_progress(bytes_read, max(bytes_read, total_bytes))
                 
                 self._is_running = False
                 if self._on_finished:
                     self._on_finished(True, "")
                 return
             except Exception as e:
-                logger.error(f"Download error for {self.url} (Attempt {attempt + 1}/{max_attempts}): {e}")
+                logger.error(f"Download error for {self.url} (Attempt {attempt + 1}/{max_attempts}): {e}", exc_info=True)
                 if os.path.exists(self.dest_path):
                     os.remove(self.dest_path)
                     
@@ -107,16 +123,14 @@ class ModelManager:
         self._progress_callbacks = []
         self._complete_callbacks = []
         
-        self.models_urls = {
-            "fp32": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx",
-            "fp16": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_fp16.onnx",
-            "int8": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_quantized.onnx"
+        self._installers = {
+            "kokoro": KokoroInstaller()
         }
-        self.voices_url = "https://huggingface.co/fastrtc/kokoro-onnx/resolve/main/voices-v1.0.bin"
         
         self._download_queue = []
+        self._download_engine = None
         self._download_precision = None
-        self._installed_precisions_cache = None
+        self._installed_precisions_cache = {}
         
     def add_progress_callback(self, cb):
         if cb not in self._progress_callbacks:
@@ -127,6 +141,11 @@ class ModelManager:
             self._complete_callbacks.append(cb)
             
     def _emit_progress(self, bytes_read: int, total_bytes: int, name: str):
+        # Only log periodically to avoid log spam, maybe every 10MB or 10%?
+        # Actually, let's just log once per file at the start and end, 
+        # or just log when bytes_read == 0 or bytes_read == total_bytes.
+        if bytes_read == 0 or bytes_read == total_bytes or bytes_read % (1024 * 1024 * 50) < 130000:
+            logger.debug(f"Progress: {bytes_read}/{total_bytes} for {name}")
         for cb in self._progress_callbacks:
             cb(bytes_read, total_bytes, name)
             
@@ -134,33 +153,27 @@ class ModelManager:
         for cb in self._complete_callbacks:
             cb(success, error)
 
-    def download_model(self, precision: str):
-        logger.info(f"download_model called: precision={precision}")
+    def download_model(self, engine_id: str, precision: str):
+        logger.info(f"download_model called: engine={engine_id}, precision={precision}")
         if self._worker and self._worker.is_running():
             logger.warning("download_model: worker already running, ignoring")
             return
             
-        if precision not in self.models_urls:
-            logger.error(f"download_model: invalid precision '{precision}'")
+        installer = self._installers.get(engine_id)
+        if not installer:
+            self._emit_complete(False, f"Engine '{engine_id}' not supported.")
+            return
+
+        app_dir = Path(self.settings_manager.get_app_directory())
+        queue = installer.get_download_queue(precision, app_dir)
+        
+        if not queue:
+            logger.error(f"download_model: invalid precision '{precision}' for {engine_id}")
             self._emit_complete(False, f"Invalid precision: {precision}")
             return
             
-        app_dir = Path(self.settings_manager.get_app_directory())
-        models_dir = app_dir / "models" / "kokoro"
-        logger.info(f"download_model: creating dir {models_dir}")
-        os.makedirs(models_dir, exist_ok=True)
-        
-        onnx_dest = models_dir / f"kokoro-v1.0-{precision}.onnx"
-        voices_dest = models_dir / "voices-v1.0.bin"
-        
-        self._download_queue = [
-            {"url": self.models_urls[precision], "dest": str(onnx_dest), "name": f"kokoro-v1.0-{precision}.onnx"}
-        ]
-        if not voices_dest.exists():
-            self._download_queue.append(
-                {"url": self.voices_url, "dest": str(voices_dest), "name": "voices-v1.0.bin"}
-            )
-        
+        self._download_queue = queue
+        self._download_engine = engine_id
         self._download_precision = precision
         logger.info(f"download_model: queue={[q['name'] for q in self._download_queue]}, starting...")
         self._process_queue()
@@ -168,10 +181,10 @@ class ModelManager:
     def _process_queue(self):
         if not self._download_queue:
             update = {"initialSetupComplete": True}
-            if self._download_precision:
+            if self._download_engine == "kokoro" and self._download_precision:
                 update["kokoroPrecision"] = self._download_precision
             self.settings_manager.update_app_config(update)
-            self._installed_precisions_cache = None
+            self._installed_precisions_cache.pop(self._download_engine, None)
             self._emit_complete(True, "")
             return
             
@@ -195,66 +208,40 @@ class ModelManager:
             self._download_queue.clear()
             self._emit_complete(False, error)
         
-    def delete_model(self, precision: str = ""):
+    def delete_model(self, engine_id: str, precision: str = "") -> bool:
+        installer = self._installers.get(engine_id)
+        if not installer:
+            return False
+            
         app_dir = Path(self.settings_manager.get_app_directory())
-        models_dir = app_dir / "models" / "kokoro"
+        res = installer.delete_model(precision, app_dir)
+        if res:
+            self._installed_precisions_cache.pop(engine_id, None)
+        return res
+            
+    def is_model_installed(self, engine_id: str, precision: str = "") -> bool:
+        installer = self._installers.get(engine_id)
+        if not installer:
+            return False
         
-        try:
-            precisions = [precision] if precision else ["fp32", "fp16", "int8"]
-            for p in precisions:
-                p_file = models_dir / f"kokoro-v1.0-{p}.onnx"
-                if p_file.exists():
-                    os.remove(p_file)
-            
-            if not precision:
-                old_file = models_dir / "kokoro-v1.0.onnx"
-                if old_file.exists():
-                    os.remove(old_file)
-            
-            has_any = False
-            for p in ["fp32", "fp16", "int8"]:
-                if (models_dir / f"kokoro-v1.0-{p}.onnx").exists():
-                    has_any = True
-            if (models_dir / "kokoro-v1.0.onnx").exists():
-                has_any = True
-                
-            if not has_any and (models_dir / "voices-v1.0.bin").exists():
-                os.remove(models_dir / "voices-v1.0.bin")
-            self._installed_precisions_cache = None
-            return True
-        except Exception as e:
-            logger.error(f"Failed to delete model: {e}")
-            return False
-            
-    def is_model_installed(self, precision: str = "") -> bool:
-        installed = self.get_installed_precisions()
-        if not installed:
-            return False
-            
-        if precision:
-            return precision in installed
-        return len(installed) > 0
-            
-    def get_installed_precisions(self) -> list[str]:
-        if self._installed_precisions_cache is not None:
-            return self._installed_precisions_cache
-
         app_dir = Path(self.settings_manager.get_app_directory())
-        models_dir = app_dir / "models" / "kokoro"
-        if not (models_dir / "voices-v1.0.bin").exists():
-            self._installed_precisions_cache = []
+        return installer.is_installed(precision, app_dir)
+            
+    def get_installed_precisions(self, engine_id: str) -> list[str]:
+        if engine_id in self._installed_precisions_cache:
+            return self._installed_precisions_cache[engine_id]
+
+        installer = self._installers.get(engine_id)
+        if not installer:
             return []
             
-        installed = []
-        for p in ["fp32", "fp16", "int8"]:
-            if (models_dir / f"kokoro-v1.0-{p}.onnx").exists():
-                installed.append(p)
-        if (models_dir / "kokoro-v1.0.onnx").exists():
-            saved = self.settings_manager.get_app_config().get("kokoroPrecision", "fp32")
-            if saved not in installed:
-                installed.append(saved)
-                
-        self._installed_precisions_cache = installed
+        app_dir = Path(self.settings_manager.get_app_directory())
+        
+        # We assume Kokoro for config keys for now, to avoid breaking too much UI code
+        saved_precision = self.settings_manager.get_app_config().get("kokoroPrecision", "") if engine_id == "kokoro" else ""
+        
+        installed = installer.get_installed_precisions(app_dir, saved_precision)
+        self._installed_precisions_cache[engine_id] = installed
         return installed
 
     def is_download_running(self) -> bool:

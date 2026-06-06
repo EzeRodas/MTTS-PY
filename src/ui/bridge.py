@@ -5,10 +5,25 @@ Replaces Electron's preload.ts + ipcMain handler pattern.
 import json
 import logging
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
+from functools import wraps
 
 from PySide6.QtCore import QObject, Slot, Signal
 
 logger = logging.getLogger(__name__)
+
+# Global thread pool for offloading blocking tasks
+_executor = ThreadPoolExecutor(max_workers=4)
+
+def background_task(func):
+    """
+    Decorator to run a bridge method in a background thread.
+    Useful for heavy operations (I/O, network) to avoid freezing the UI.
+    """
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        _executor.submit(func, self, *args, **kwargs)
+    return wrapper
 
 
 class Bridge(QObject):
@@ -161,6 +176,7 @@ class Bridge(QObject):
         return json.dumps({"platform": sys.platform})
 
     @Slot(str)
+    @background_task
     def updateAppConfig(self, config_json: str):
         """Update app config with a partial JSON object."""
         if self._controller:
@@ -173,6 +189,17 @@ class Bridge(QObject):
                     self.default_monitor_changed.emit(int(config["defaultMonitor"]))
             except json.JSONDecodeError as e:
                 logger.error(f"updateAppConfig: invalid JSON: {e}")
+
+    @Slot(str)
+    @background_task
+    def updateEngineConfig(self, config_json: str):
+        """Update engine config with a partial JSON object."""
+        if self._controller:
+            try:
+                config = json.loads(config_json)
+                self._controller.update_engine_config("kokoro", config)
+            except json.JSONDecodeError as e:
+                logger.error(f"updateEngineConfig: invalid JSON: {e}")
 
     @Slot(result=bool)
     def isReady(self) -> bool:
@@ -270,6 +297,7 @@ class Bridge(QObject):
         return "[]"
 
     @Slot(int)
+    @background_task
     def playHistory(self, history_id: int):
         """Play historical audio by ID."""
         if self._controller:
@@ -282,6 +310,7 @@ class Bridge(QObject):
             self._controller.delete_history(history_id)
 
     @Slot()
+    @background_task
     def clearHistory(self):
         """Clear all historical recordings."""
         if self._controller:
@@ -320,6 +349,7 @@ class Bridge(QObject):
         return False
 
     @Slot(str)
+    @background_task
     def testDictionarySpelling(self, spelling: str):
         """Preview a dictionary spelling through the monitoring device."""
         if self._controller:
@@ -372,6 +402,7 @@ class Bridge(QObject):
             self._controller.delete_hotkey(hotkey_id)
 
     @Slot()
+    @background_task
     def clearHotkeys(self):
         """Clear all hotkeys."""
         if self._controller:
@@ -405,44 +436,44 @@ class Bridge(QObject):
     def downloadModel(self, precision: str):
         logger.info(f"downloadModel called with precision={precision}")
         if self._model_manager:
-            self._model_manager.download_model(precision)
+            self._model_manager.download_model("kokoro", precision)
         else:
             logger.error("downloadModel: _model_manager is None!")
 
     @Slot(result=bool)
     def deleteModel(self) -> bool:
         if self._model_manager:
-            res = self._model_manager.delete_model()
+            res = self._model_manager.delete_model("kokoro", "")
             if self._controller:
-                self._controller.reload_engine()
+                _executor.submit(self._controller.reload_engine)
             return res
         return False
 
     @Slot(str, result=bool)
     def deleteModelWithPrecision(self, precision: str) -> bool:
         if self._model_manager:
-            res = self._model_manager.delete_model(precision)
+            res = self._model_manager.delete_model("kokoro", precision)
             if self._controller:
-                self._controller.reload_engine()
+                _executor.submit(self._controller.reload_engine)
             return res
         return False
 
     @Slot(result=bool)
     def isModelInstalled(self) -> bool:
         if self._model_manager:
-            return self._model_manager.is_model_installed()
+            return self._model_manager.is_model_installed("kokoro", "")
         return False
 
     @Slot(str, result=bool)
     def isModelInstalledWithPrecision(self, precision: str) -> bool:
         if self._model_manager:
-            return self._model_manager.is_model_installed(precision)
+            return self._model_manager.is_model_installed("kokoro", precision)
         return False
 
     @Slot(result=str)
     def getInstalledPrecisions(self) -> str:
         if self._model_manager:
-            return json.dumps(self._model_manager.get_installed_precisions())
+            return json.dumps(self._model_manager.get_installed_precisions("kokoro"))
         return "[]"
 
     @Slot(result=bool)
