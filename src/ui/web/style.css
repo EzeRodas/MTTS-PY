@@ -45,6 +45,7 @@ body { margin: 16px; height: calc(100% - 32px); width: calc(100% - 32px); }
 .settings-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .settings-row:last-child { margin-bottom: 0; }
 .settings-row h4 { font-weight: 700; }
+.settings-desc { font-size: 0.85rem; color: #6b7280; margin-top: 4px; font-weight: 500; }
 select { background: white; border-radius: 8px; width: 192px; outline: 1px solid #d1d5db; border: none; padding: 4px 8px; font-family: 'Nunito', sans-serif; font-size: 1rem;}
 select.full-width { width: 100%; margin-bottom: 12px; }
 optgroup { font-weight: 700; color: #4f46e5; background: white; font-style: normal; }

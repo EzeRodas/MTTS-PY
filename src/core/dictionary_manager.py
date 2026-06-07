@@ -85,18 +85,21 @@ class DictionaryManager:
                 return text
     
             parts = []
-            # Iterate in reverse order so later entries take precedence over earlier ones
-            for i in range(len(self._entries) - 1, -1, -1):
-                entry = self._entries[i]
+            # Map index to entry to preserve correct substitution retrieval
+            indexed_entries = list(enumerate(self._entries))
+            # Sort by length of original text descending
+            indexed_entries.sort(key=lambda x: len(x[1].get("original", "")), reverse=True)
+            
+            for idx, entry in indexed_entries:
                 original = entry.get("original", "")
                 if not original:
                     continue
                     
                 escaped = re.escape(original)
                 if entry.get("case_sensitive", False):
-                    parts.append(f"(?P<r{i}>\\b{escaped}\\b)")
+                    parts.append(f"(?P<r{idx}>\\b{escaped}\\b)")
                 else:
-                    parts.append(f"(?P<r{i}>(?i:\\b{escaped}\\b))")
+                    parts.append(f"(?P<r{idx}>(?i:\\b{escaped}\\b))")
                 
             if not parts:
                 return text

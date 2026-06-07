@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .language_map import get_language_for_voice
+from src.core.dictionary_manager import DictionaryManager
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +78,10 @@ class KokoroTTSProvider:
         self.settings_manager = settings_manager
         self.audio_service = audio_service
         self.history_manager = history_manager
+        self.dictionary_manager = DictionaryManager(settings_manager)
 
         self.tts_instance: Any = None
+        self._cached_voices: list[str] = []
 
         self.kokoro_config: dict[str, Any] = self.settings_manager.get_engine_config(
             "kokoro",
@@ -235,9 +238,13 @@ class KokoroTTSProvider:
                 fixed = {}
                 for k, v in inputs.items():
                     if k in expected_dtypes:
-                        arr = np.asarray(v)
-                        if arr.dtype != expected_dtypes[k]:
-                            arr = arr.astype(expected_dtypes[k])
+                        if k == "speed":
+                            # Use original float speed value to bypass int32 truncation
+                            arr = np.array([speed], dtype=expected_dtypes[k])
+                        else:
+                            arr = np.asarray(v)
+                            if arr.dtype != expected_dtypes[k]:
+                                arr = arr.astype(expected_dtypes[k])
                         fixed[k] = arr
                     else:
                         fixed[k] = v
@@ -263,12 +270,34 @@ class KokoroTTSProvider:
 
         Falls back to a hardcoded list if the runtime query fails.
         """
+        if self._cached_voices:
+            return self._cached_voices
+
+        if self.tts_instance is not None:
+            try:
+                self._cached_voices = list(self.tts_instance.get_voices())
+                return self._cached_voices
+            except Exception:
+                pass
+
         if not self.is_available():
             return list(_FALLBACK_VOICES)
-            
+
+        _, voices_path = self._resolve_model_paths()
+        if voices_path and voices_path.exists():
+            try:
+                import numpy as np
+                # Load voices file directly to retrieve keys without loading ONNX model session
+                voices_data = np.load(str(voices_path))
+                self._cached_voices = list(sorted(voices_data.keys()))
+                return self._cached_voices
+            except Exception as e:
+                logger.error(f"Failed to read voices file directly: {e}")
+
         try:
             tts = self._get_tts_instance()
-            return list(tts.get_voices())
+            self._cached_voices = list(tts.get_voices())
+            return self._cached_voices
         except Exception as e:
             logger.exception("Failed to load/initialize TTS engine:")
             return list(_FALLBACK_VOICES)
@@ -287,6 +316,61 @@ class KokoroTTSProvider:
     # ------------------------------------------------------------------
     # Synthesis
     # ------------------------------------------------------------------
+
+    def split_text_safely(self, text: str) -> list[str]:
+        import re
+        # 1. Collect protected patterns
+        patterns = [
+            r'\d+\.\d+',  # Decimals (e.g. 3.14)
+            r'\b(?:mr|mrs|ms|dr|vs|eg|ie|etc|am|pm|gen|col|st|jr|sr)\.', # Abbreviations (case-insensitive)
+        ]
+        
+        # 2. Add custom dictionary entry patterns
+        if self.dictionary_manager:
+            dict_entries = self.dictionary_manager.get_dictionary()
+            for entry in sorted(dict_entries, key=lambda x: len(x.get("original", "")), reverse=True):
+                orig = entry.get("original", "")
+                spelling = entry.get("spelling", "")
+                # Protect both the original string and the replacement spelling
+                for term in [orig, spelling]:
+                    if not term:
+                        continue
+                    escaped = re.escape(term)
+                    if entry.get("case_sensitive", False):
+                        patterns.append(rf'\b{escaped}\b')
+                    else:
+                        patterns.append(rf'(?i:\b{escaped}\b)')
+                    
+        combined_pattern = re.compile("|".join(patterns))
+        
+        # 3. Substitute punctuation with unique placeholders
+        def replace_fn(match):
+            matched_str = match.group(0)
+            return (matched_str
+                    .replace('.', '__DOT__')
+                    .replace(',', '__COMMA__')
+                    .replace(';', '__SEMICOLON__')
+                    .replace(':', '__COLON__'))
+
+        protected_text = combined_pattern.sub(replace_fn, text)
+        
+        # 4. Perform split on clause boundary punctuation followed by spaces
+        raw_chunks = re.split(r'(?<=[.!?,\;:—])\s+', protected_text)
+        
+        # 5. Restore placeholders and yield cleaned chunks
+        final_chunks = []
+        for chunk in raw_chunks:
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            restored = (chunk
+                        .replace('__DOT__', '.')
+                        .replace('__COMMA__', ',')
+                        .replace('__SEMICOLON__', ';')
+                        .replace('__COLON__', ':'))
+            final_chunks.append(restored)
+            
+        return final_chunks
 
     def speak(self, text: str) -> None:
         """Synthesise *text* and play it through the audio service.
@@ -321,18 +405,17 @@ class KokoroTTSProvider:
 
         logger.info(f"Synthesizing text with voice='{voice_id}' (resolved lang='{lang}')")
         
-        import re
-        import queue
-        import threading
+        app_config = self.settings_manager.get_app_config()
         
-        # Split text into clauses/sentences for streaming to reduce latency on long sentences
-        # Splitting on punctuation followed by whitespace, keeping the punctuation
-        sentences = re.split(r'(?<=[.!?,\;:—])\s+', text)
-        sentences = [s.strip() for s in sentences if s.strip()]
+        # Split text safely without breaking decimals, abbreviations, or dictionary entries
+        if app_config.get("splitSentences", True):
+            sentences = self.split_text_safely(text)
+        else:
+            sentences = [text.strip()] if text.strip() else []
+
         if not sentences:
             return
 
-        app_config = self.settings_manager.get_app_config()
         playback = app_config.get("playback", True)
         device_id = app_config.get("playbackDevice", "default")
         volume = app_config.get("volume", 0.8)

@@ -45,6 +45,7 @@ class SettingsManager:
             "defaultAppShortcut": "Ctrl+Alt+M",
             "defaultMonitor": 0,
             "hideOnEnter": False,
+            "splitSentences": True,
         }
 
     def _resolve_directories(self) -> tuple[str, str]:

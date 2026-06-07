@@ -16,6 +16,17 @@ function loadGeneralTab() {
             });
         }
 
+        // Split Sentences toggle
+        const splitCb = document.getElementById('advSplitSentencesCheckbox');
+        if (splitCb) {
+            const newSplitCb = splitCb.cloneNode(true);
+            splitCb.parentNode.replaceChild(newSplitCb, splitCb);
+            newSplitCb.checked = config.splitSentences !== false; // defaults to true
+            newSplitCb.addEventListener('change', () => {
+                api.updateAppConfig(JSON.stringify({splitSentences: newSplitCb.checked}));
+            });
+        }
+
         // Start Minimized toggle
         const startMinCb = document.getElementById('advStartMinimizedCheckbox');
         if (startMinCb) {
