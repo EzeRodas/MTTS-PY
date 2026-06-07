@@ -151,8 +151,11 @@ class Bridge(QObject):
     def stop(self):
         """Abort current synthesis and playback immediately."""
         logger.info("Stop requested by user via bridge.")
+        with self._synth_lock:
+            self._synthesizing = False
         if self._controller:
             self._controller.cancel_synthesis()
+        self._on_playback_state_changed()
 
     @Slot()
     def pause(self):

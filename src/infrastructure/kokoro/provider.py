@@ -468,6 +468,9 @@ class KokoroTTSProvider:
                     speed=speed,
                     lang=lang,
                 )
+                if self._cancelled:
+                    logger.info("Synthesis loop aborted by user after creation.")
+                    break
                 sample_rate_used = sample_rate
                 master_samples.append(samples)
                 
@@ -481,11 +484,12 @@ class KokoroTTSProvider:
         except Exception as e:
             logger.error(f"Synthesis failed during streaming: {e}")
         finally:
-            if playback or (monitoring and monitoring_device_id is not None):
-                self.audio_service.enqueue_sentinel()
+            if not self._cancelled:
+                if playback or (monitoring and monitoring_device_id is not None):
+                    self.audio_service.enqueue_sentinel()
 
         # Write the full synthesized text to a single file for history
-        if master_samples:
+        if master_samples and not self._cancelled:
             try:
                 import soundfile as sf
                 import numpy as np

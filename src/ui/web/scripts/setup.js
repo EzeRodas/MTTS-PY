@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function initBridgeConnections() {
-    // Check if already installed or downloading
+    // Check if download is running to resume progress view
     if (bridge_obj.isDownloadRunning) {
         bridge_obj.isDownloadRunning(function(running) {
             if (running) {
@@ -50,23 +50,13 @@ function initBridgeConnections() {
                 document.getElementById('progressContainer').style.display = "flex";
                 document.getElementById('progressText').innerText = "Resuming download progress...";
             } else {
-                bridge_obj.isModelInstalled(function(installed) {
-                    if (installed) {
-                        document.getElementById('engineSelectionContainer').style.display = 'none';
-                        document.getElementById('qualitySelectionContainer').style.display = 'flex';
-                        updateModelOptionsList();
-                    }
-                });
+                document.getElementById('engineSelectionContainer').style.display = 'flex';
+                document.getElementById('qualitySelectionContainer').style.display = 'none';
             }
         });
     } else {
-        bridge_obj.isModelInstalled(function(installed) {
-            if (installed) {
-                document.getElementById('engineSelectionContainer').style.display = 'none';
-                document.getElementById('qualitySelectionContainer').style.display = 'flex';
-                updateModelOptionsList();
-            }
-        });
+        document.getElementById('engineSelectionContainer').style.display = 'flex';
+        document.getElementById('qualitySelectionContainer').style.display = 'none';
     }
 
     // Listen for progress updates

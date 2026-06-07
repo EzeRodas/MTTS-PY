@@ -81,6 +81,12 @@ class LinuxSubprocessPlayer(AudioPlayer):
             self.paused = False
 
     def stop(self) -> None:
+        p = self.proc
+        if p:
+            try:
+                p.kill()
+            except Exception:
+                pass
         self.close()
 
     def close(self) -> None:
@@ -180,6 +186,7 @@ class PortAudioPlayer(AudioPlayer):
     def stop(self) -> None:
         with self.lock:
             self.buffer.clear()
+        self.close()
 
     def close(self) -> None:
         if self.stream:
@@ -482,6 +489,7 @@ class AudioService:
                 player.stop()
             except Exception:
                 pass
+            self._current_player = None
 
         with self._play_queue.mutex:
             self._play_queue.queue.clear()
@@ -526,7 +534,11 @@ class AudioService:
             if isinstance(player, LinuxSubprocessPlayer) and player.proc and player.proc.poll() is not None:
                 self._current_player = None
 
-        return not self._play_queue.empty() or self._current_player is not None
+        has_audio = False
+        with self._play_queue.mutex:
+            has_audio = any(item is not None for item in self._play_queue.queue)
+
+        return has_audio or self._current_player is not None
 
     def play_with_config(self, file_path: str, config: dict[str, Any]) -> None:
         """Legacy helper to read a WAV file and enqueue it."""
