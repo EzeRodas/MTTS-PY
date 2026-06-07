@@ -30,6 +30,8 @@ class AudioService:
         self._play_queue = queue.Queue()
         self._stop_event = threading.Event()
         self._samplerate = 24000
+        self._current_proc = None
+        self._current_stream = None
         self._worker_thread = threading.Thread(target=self._playback_worker, daemon=True)
         self._worker_thread.start()
 
@@ -201,6 +203,7 @@ class AudioService:
                 except Exception:
                     pass
                 stream = None
+                self._current_stream = None
             if proc:
                 try:
                     proc.stdin.close()
@@ -208,11 +211,13 @@ class AudioService:
                 except Exception:
                     pass
                 proc = None
+                self._current_proc = None
 
         while not self._stop_event.is_set():
             try:
-                item = self._play_queue.get(timeout=0.1)
+                item = self._play_queue.get(timeout=0.8)
             except queue.Empty:
+                close_streams()
                 continue
 
             if item is None:
@@ -237,9 +242,11 @@ class AudioService:
                             cmd.extend(["-d", str(device_id)])
                         try:
                             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                            self._current_proc = proc
                         except Exception as e:
                             logger.error(f"Failed to start paplay stream: {e}")
                             proc = None
+                            self._current_proc = None
                             use_paplay = False
 
                 # Fallback to sounddevice
@@ -258,6 +265,7 @@ class AudioService:
                             dtype='float32'
                         )
                         stream.start()
+                        self._current_stream = stream
                     except Exception as e:
                         logger.error(f"Failed to open audio stream: {e}")
                         self._play_queue.task_done()
@@ -276,10 +284,33 @@ class AudioService:
             self._play_queue.task_done()
 
     def stop(self) -> None:
-        """Stop playback immediately by clearing the queue."""
+        """Stop playback immediately by clearing the queue and active streams."""
         with self._play_queue.mutex:
             self._play_queue.queue.clear()
+            
+        # Terminate active process immediately
+        if self._current_proc:
+            try:
+                self._current_proc.terminate()
+                self._current_proc.wait(timeout=0.5)
+            except Exception:
+                pass
+            self._current_proc = None
+
+        # Stop active sounddevice stream immediately
+        if self._current_stream:
+            try:
+                self._current_stream.stop()
+                self._current_stream.close()
+            except Exception:
+                pass
+            self._current_stream = None
+
         self._play_queue.put(None)
+
+    def is_playing(self) -> bool:
+        """Return True if there is audio currently playing or enqueued."""
+        return not self._play_queue.empty() or self._current_proc is not None or self._current_stream is not None
 
     def play_with_config(self, file_path: str, config: dict[str, Any]) -> None:
         """Legacy helper to read a WAV file and enqueue it."""

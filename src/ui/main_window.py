@@ -105,12 +105,16 @@ class MainWindow(BaseWebWindow):
     def showEvent(self, event):
         super().showEvent(event)
         self._web_view.setFocus()
-        self._web_view.page().runJavaScript("if (typeof checkReadiness === 'function') checkReadiness();")
+        self._web_view.page().runJavaScript(
+            "if (typeof checkReadiness === 'function') checkReadiness();"
+            "if (typeof focusInput === 'function') focusInput();"
+        )
 
     def changeEvent(self, event):
         if event.type() == QEvent.Type.ActivationChange:
             if self.isActiveWindow():
                 self._web_view.setFocus()
+                self._web_view.page().runJavaScript("if (typeof focusInput === 'function') focusInput();")
         super().changeEvent(event)
 
     def keyPressEvent(self, event):

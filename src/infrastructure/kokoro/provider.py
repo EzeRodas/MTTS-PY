@@ -82,6 +82,7 @@ class KokoroTTSProvider:
 
         self.tts_instance: Any = None
         self._cached_voices: list[str] = []
+        self._cancelled: bool = False
 
         self.kokoro_config: dict[str, Any] = self.settings_manager.get_engine_config(
             "kokoro",
@@ -313,6 +314,10 @@ class KokoroTTSProvider:
         self.kokoro_config["voiceId"] = voice_id
         self.settings_manager.update_engine_config("kokoro", {"voiceId": voice_id})
 
+    def cancel(self) -> None:
+        """Cancel the ongoing synthesis loop."""
+        self._cancelled = True
+
     # ------------------------------------------------------------------
     # Synthesis
     # ------------------------------------------------------------------
@@ -404,6 +409,7 @@ class KokoroTTSProvider:
         lang = get_language_for_voice(voice_id)
 
         logger.info(f"Synthesizing text with voice='{voice_id}' (resolved lang='{lang}')")
+        self._cancelled = False
         
         app_config = self.settings_manager.get_app_config()
         
@@ -429,6 +435,9 @@ class KokoroTTSProvider:
         try:
             import numpy as np
             for sentence in sentences:
+                if self._cancelled:
+                    logger.info("Synthesis loop aborted by user.")
+                    break
                 samples, sample_rate = tts.create(
                     sentence,
                     voice=voice_id,

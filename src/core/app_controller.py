@@ -69,6 +69,13 @@ class AppController:
         except Exception as e:
             logger.error(f"Error processing TTS input: {e}")
 
+    def cancel_synthesis(self) -> None:
+        """Cancel ongoing synthesis and playback immediately."""
+        if hasattr(self._tts_service, "cancel"):
+            self._tts_service.cancel()
+        if self._audio_service:
+            self._audio_service.stop()
+
     # =========================================================================
     # Models
     # =========================================================================

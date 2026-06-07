@@ -77,6 +77,14 @@ window.checkReadiness = function() {
     }
 };
 
+window.focusInput = function() {
+    const textArea = document.getElementById('textArea');
+    if (textArea && !textArea.disabled) {
+        textArea.focus();
+        textArea.select();
+    }
+};
+
 window.addEventListener('bridgeReady', () => {
     if (api) {
         api.app_ready.connect(() => {

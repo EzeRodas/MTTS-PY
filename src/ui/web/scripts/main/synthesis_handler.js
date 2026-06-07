@@ -60,3 +60,27 @@ textArea.addEventListener('keydown', (e) => {
         submitAction();
     }
 });
+
+const stopBtn = document.getElementById('stopBtn');
+if (stopBtn) {
+    stopBtn.addEventListener('click', () => {
+        if (api) {
+            api.stop();
+        }
+    });
+}
+
+setInterval(() => {
+    if (api && api.isBusy && stopBtn) {
+        api.isBusy(function(busy) {
+            if (busy) {
+                stopBtn.removeAttribute('disabled');
+                stopBtn.classList.add('active');
+            } else {
+                stopBtn.setAttribute('disabled', 'true');
+                stopBtn.classList.remove('active');
+            }
+        });
+    }
+}, 200);
+

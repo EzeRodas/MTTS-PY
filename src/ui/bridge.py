@@ -121,6 +121,26 @@ class Bridge(QObject):
         import threading
         threading.Thread(target=_run_synth, daemon=True).start()
 
+    @Slot(result=bool)
+    def isBusy(self) -> bool:
+        """Check if synthesis is active or audio is currently playing."""
+        synthesis_active = False
+        with self._synth_lock:
+            synthesis_active = self._synthesizing
+            
+        playback_active = False
+        if self._controller and self._controller._audio_service:
+            playback_active = self._controller._audio_service.is_playing()
+            
+        return synthesis_active or playback_active
+
+    @Slot()
+    def stop(self):
+        """Abort current synthesis and playback immediately."""
+        logger.info("Stop requested by user via bridge.")
+        if self._controller:
+            self._controller.cancel_synthesis()
+
     # =========================================================================
     # Model & Voice
     # =========================================================================
