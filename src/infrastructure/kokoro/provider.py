@@ -456,6 +456,9 @@ class KokoroTTSProvider:
                 
         except Exception as e:
             logger.error(f"Synthesis failed during streaming: {e}")
+        finally:
+            if playback or (monitoring and monitoring_device_id is not None):
+                self.audio_service.enqueue_sentinel()
 
         # Write the full synthesized text to a single file for history
         if master_samples:
@@ -503,6 +506,7 @@ class KokoroTTSProvider:
             monitoring_device_id, 
             monitoring_volume
         )
+        self.audio_service.enqueue_sentinel()
 
     def generate_to_file(self, text: str, file_path: str) -> None:
         """Synthesise *text* and write the result directly to *file_path*.

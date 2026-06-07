@@ -55,6 +55,7 @@ class Bridge(QObject):
     download_complete = Signal(bool, str)     # success, error_msg
     setup_finished = Signal()                 # Emitted when setup is completed or skipped
     settings_updated = Signal()               # Emitted when any settings change
+    playback_state_changed = Signal(bool, bool) # Emitted with (is_busy, is_paused)
 
     def __init__(self, app_controller=None, parent=None, event_bus=None):
         super().__init__(parent)
@@ -65,7 +66,7 @@ class Bridge(QObject):
         self.is_ready = False
         
         import threading
-        self._synth_lock = threading.Lock()
+        self._synth_lock = threading.RLock()
         self._synthesizing = False
         
         if self._event_bus:
@@ -92,6 +93,13 @@ class Bridge(QObject):
     def set_controller(self, controller):
         """Set the app controller after construction (for deferred init)."""
         self._controller = controller
+        if self._controller:
+            self._controller.set_playback_state_changed_callback(self._on_playback_state_changed)
+
+    def _on_playback_state_changed(self):
+        busy = self.isBusy()
+        paused = self.isPaused()
+        self.playback_state_changed.emit(busy, paused)
 
 
     # =========================================================================
@@ -104,10 +112,14 @@ class Bridge(QObject):
         if not self._controller:
             return
             
+        should_start = False
         with self._synth_lock:
-            if self._synthesizing:
-                return
-            self._synthesizing = True
+            if not self._synthesizing:
+                self._synthesizing = True
+                should_start = True
+            
+        if should_start:
+            self._on_playback_state_changed()
             
         def _run_synth():
             try:
@@ -117,6 +129,7 @@ class Bridge(QObject):
             finally:
                 with self._synth_lock:
                     self._synthesizing = False
+                self._on_playback_state_changed()
 
         import threading
         threading.Thread(target=_run_synth, daemon=True).start()
@@ -140,6 +153,28 @@ class Bridge(QObject):
         logger.info("Stop requested by user via bridge.")
         if self._controller:
             self._controller.cancel_synthesis()
+
+    @Slot()
+    def pause(self):
+        """Pause current audio playback."""
+        logger.info("Pause requested by user via bridge.")
+        if self._controller:
+            self._controller.pause_playback()
+
+    @Slot()
+    def resume(self):
+        """Resume current audio playback."""
+        logger.info("Resume requested by user via bridge.")
+        if self._controller:
+            self._controller.resume_playback()
+
+    @Slot(result=bool)
+    def isPaused(self) -> bool:
+        """Check if audio playback is currently paused."""
+        if self._controller:
+            return self._controller.is_paused()
+        return False
+
 
     # =========================================================================
     # Model & Voice

@@ -55,6 +55,10 @@ class AppController:
             self._active_model = saved_active
         else:
             self._active_model = self._available_models[0] if self._available_models else ""
+        
+        self._playback_state_changed_callback = None
+        if self._audio_service:
+            self._audio_service.set_state_changed_callback(self._on_playback_state_changed)
 
     # =========================================================================
     # TTS
@@ -62,6 +66,10 @@ class AppController:
 
     def process_input(self, text: str) -> None:
         """Synthesize and play back the given text."""
+        # Ensure we are not paused when starting a new synthesis
+        if self._audio_service:
+            self._audio_service.resume()
+
         try:
             # Apply dictionary replacements
             processed_text = self._dictionary_manager.replace_text(text)
@@ -75,6 +83,34 @@ class AppController:
             self._tts_service.cancel()
         if self._audio_service:
             self._audio_service.stop()
+
+    def pause_playback(self) -> None:
+        """Pause audio playback."""
+        if self._audio_service:
+            self._audio_service.pause()
+
+    def resume_playback(self) -> None:
+        """Resume audio playback."""
+        if self._audio_service:
+            self._audio_service.resume()
+
+    def is_paused(self) -> bool:
+        """Check if audio playback is currently paused."""
+        if self._audio_service:
+            return self._audio_service.is_paused()
+        return False
+
+    def set_playback_state_changed_callback(self, callback) -> None:
+        """Set callback to notify when playback state changes."""
+        self._playback_state_changed_callback = callback
+
+    def _on_playback_state_changed(self) -> None:
+        if self._playback_state_changed_callback:
+            try:
+                self._playback_state_changed_callback()
+            except Exception:
+                pass
+
 
     # =========================================================================
     # Models

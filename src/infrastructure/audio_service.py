@@ -32,8 +32,22 @@ class AudioService:
         self._samplerate = 24000
         self._current_proc = None
         self._current_stream = None
+        self._paused = False
+        self._pause_event = threading.Event()
+        self._pause_event.set()
+        self._state_changed_callback = None
         self._worker_thread = threading.Thread(target=self._playback_worker, daemon=True)
         self._worker_thread.start()
+
+    def set_state_changed_callback(self, callback) -> None:
+        self._state_changed_callback = callback
+
+    def _notify_state_changed(self) -> None:
+        if self._state_changed_callback:
+            try:
+                self._state_changed_callback()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Device enumeration
@@ -182,6 +196,12 @@ class AudioService:
         chunk = chunk * volume
 
         self._play_queue.put((chunk, device_id))
+        self._notify_state_changed()
+
+    def enqueue_sentinel(self) -> None:
+        """Enqueue a sentinel (None) to indicate the end of the current utterance."""
+        self._play_queue.put(None)
+        self._notify_state_changed()
 
     def flush(self):
         """Wait for all currently enqueued chunks to finish playing."""
@@ -212,12 +232,16 @@ class AudioService:
                     pass
                 proc = None
                 self._current_proc = None
+            self._notify_state_changed()
 
         while not self._stop_event.is_set():
+            if self._paused:
+                self._pause_event.wait(timeout=0.1)
+                continue
+
             try:
-                item = self._play_queue.get(timeout=0.8)
+                item = self._play_queue.get(timeout=0.1)
             except queue.Empty:
-                close_streams()
                 continue
 
             if item is None:
@@ -237,12 +261,13 @@ class AudioService:
                     import shutil
                     if shutil.which("paplay"):
                         use_paplay = True
-                        cmd = ["paplay", "--raw", "--channels=1", f"--rate={self._samplerate}", "--format=float32le"]
+                        cmd = ["paplay", "--raw", "--channels=1", f"--rate={self._samplerate}", "--format=float32le", "--latency-msec=150"]
                         if device_id and str(device_id).lower() != "default":
                             cmd.extend(["-d", str(device_id)])
                         try:
                             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
                             self._current_proc = proc
+                            self._notify_state_changed()
                         except Exception as e:
                             logger.error(f"Failed to start paplay stream: {e}")
                             proc = None
@@ -266,6 +291,7 @@ class AudioService:
                         )
                         stream.start()
                         self._current_stream = stream
+                        self._notify_state_changed()
                     except Exception as e:
                         logger.error(f"Failed to open audio stream: {e}")
                         self._play_queue.task_done()
@@ -277,6 +303,12 @@ class AudioService:
                     proc.stdin.flush()
                 elif stream:
                     stream.write(chunk)
+            except OSError as e:
+                if e.errno == 32:  # Broken pipe is normal on stop/abort
+                    logger.debug(f"Audio stream pipe closed: {e}")
+                else:
+                    logger.error(f"Error writing to audio stream: {e}")
+                close_streams()
             except Exception as e:
                 logger.error(f"Error writing to audio stream: {e}")
                 close_streams()
@@ -285,6 +317,17 @@ class AudioService:
 
     def stop(self) -> None:
         """Stop playback immediately by clearing the queue and active streams."""
+        self._paused = False
+        self._pause_event.set()
+        
+        proc = self._current_proc
+        if proc:
+            import signal
+            try:
+                proc.send_signal(signal.SIGCONT)
+            except Exception:
+                pass
+
         with self._play_queue.mutex:
             self._play_queue.queue.clear()
             
@@ -307,6 +350,53 @@ class AudioService:
             self._current_stream = None
 
         self._play_queue.put(None)
+        self._notify_state_changed()
+
+    def pause(self) -> None:
+        """Pause playback."""
+        self._paused = True
+        self._pause_event.clear()
+
+        proc = self._current_proc
+        if proc:
+            import signal
+            try:
+                proc.send_signal(signal.SIGSTOP)
+            except Exception as e:
+                logger.error(f"Error sending SIGSTOP: {e}")
+
+        stream = self._current_stream
+        if stream:
+            try:
+                stream.stop()
+            except Exception as e:
+                logger.error(f"Error stopping stream: {e}")
+        self._notify_state_changed()
+
+    def resume(self) -> None:
+        """Resume playback."""
+        self._paused = False
+        self._pause_event.set()
+
+        proc = self._current_proc
+        if proc:
+            import signal
+            try:
+                proc.send_signal(signal.SIGCONT)
+            except Exception as e:
+                logger.error(f"Error sending SIGCONT: {e}")
+
+        stream = self._current_stream
+        if stream:
+            try:
+                stream.start()
+            except Exception as e:
+                logger.error(f"Error starting stream: {e}")
+        self._notify_state_changed()
+
+    def is_paused(self) -> bool:
+        """Return True if playback is currently paused."""
+        return self._paused
 
     def is_playing(self) -> bool:
         """Return True if there is audio currently playing or enqueued."""
@@ -330,7 +420,7 @@ class AudioService:
                 config.get("playbackDevice", "default"), 
                 config.get("volume", 0.8)
             )
-            # We don't join here because it blocks UI. The background thread handles it.
+            self.enqueue_sentinel()
         except Exception as e:
             logger.error(f"Failed to read/play file {file_path}: {e}")
 
@@ -362,5 +452,8 @@ class AudioService:
                 # True simultaneous playback to two devices requires two output streams.
                 # For now, we queue it sequentially to keep it simple.
                 self.enqueue_chunk(data, samplerate, monitoring_device_id, monitoring_volume)
+                
+            if playback or (monitoring and monitoring_device_id is not None):
+                self.enqueue_sentinel()
         except Exception as e:
             logger.error(f"Failed to read/play file {file_path}: {e}")
