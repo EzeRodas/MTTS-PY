@@ -23,7 +23,7 @@ async function submitAction() {
             setTimeout(() => {
                 textArea.value = "";
                 textArea.disabled = false;
-                textArea.focus();
+                textArea.focus({ preventScroll: true });
             }, 2000);
             return;
         }
@@ -65,7 +65,7 @@ async function submitAction() {
                 } finally {
                     isProcessing = false;
                     submitBtn.disabled = false;
-                    textArea.focus();
+                    textArea.focus({ preventScroll: true });
                 }
             }, hide ? 50 : 0);
         });

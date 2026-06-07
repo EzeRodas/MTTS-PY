@@ -80,7 +80,7 @@ window.checkReadiness = function() {
 window.focusInput = function() {
     const textArea = document.getElementById('textArea');
     if (textArea && !textArea.disabled) {
-        textArea.focus();
+        textArea.focus({ preventScroll: true });
         textArea.select();
     }
 };

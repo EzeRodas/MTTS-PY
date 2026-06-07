@@ -413,7 +413,7 @@ class GlobalHotkeyManager(QObject):
 
     activated = Signal()
     phrase_activated = Signal(str)
-    fallback_needed = Signal(str)
+    fallback_needed = Signal()
     shortcut_bound = Signal(str)
 
     def __init__(self, parent: Optional[QObject] = None) -> None:
@@ -421,6 +421,7 @@ class GlobalHotkeyManager(QObject):
         self._listener = None
         self._dbus_runner: Optional[DBusLoopRunner] = None
         self._current_shortcut = ""
+        self._current_phrases = []
         self.fallback_needed.connect(self._register_pynput)
 
     def register_all_shortcuts(self, toggle_trigger: str, phrases: list[dict]) -> None:
@@ -433,6 +434,7 @@ class GlobalHotkeyManager(QObject):
             self._listener = None
 
         self._current_shortcut = toggle_trigger
+        self._current_phrases = phrases
 
         if HAS_DBUS and sys.platform.startswith("linux"):
             portal_toggle = to_portal_shortcut(toggle_trigger) if toggle_trigger else ""
@@ -456,7 +458,7 @@ class GlobalHotkeyManager(QObject):
 
             self._dbus_runner.register_all_shortcuts(portal_toggle, portal_phrases)
         else:
-            self._register_pynput(toggle_trigger)
+            self._register_pynput()
 
     def _on_shortcut_bound(self, actual_shortcut: str) -> None:
         """Called when the portal successfully binds a shortcut, providing the actual bound string."""
@@ -467,38 +469,50 @@ class GlobalHotkeyManager(QObject):
     def _on_dbus_fallback(self) -> None:
         """Called asynchronously when portal binding fails."""
         if not sys.platform.startswith("linux"):
-            self.fallback_needed.emit(self._current_shortcut)
+            self.fallback_needed.emit()
         else:
             logger.warning("Portal shortcut registration failed/timed out. Cannot fallback to pynput on Linux (Wayland compatibility).")
 
-    def _register_pynput(self, qt_shortcut: str) -> None:
-        """Register shortcut using the standard pynput listener hook."""
+    def _register_pynput(self) -> None:
+        """Register shortcuts using the standard pynput listener hook."""
         if sys.platform.startswith("linux"):
             logger.warning("pynput fallback disabled on Linux.")
             return
 
-        if not qt_shortcut:
-            return
-        
-        # Avoid registering if pynput is already listening to the correct key
+        # Avoid registering if pynput is already listening
         if self._listener:
             return
 
-        pynput_format = to_pynput_shortcut(qt_shortcut)
         from pynput import keyboard
 
-        def on_activate():
-            self.activated.emit()
+        hotkeys_dict = {}
+
+        # 1. Main toggle shortcut
+        if self._current_shortcut:
+            pynput_format = to_pynput_shortcut(self._current_shortcut)
+            hotkeys_dict[pynput_format] = lambda: self.activated.emit()
+
+        # 2. Phrase shortcuts
+        for phrase in self._current_phrases:
+            hotkey = phrase.get("hotkey")
+            if hotkey:
+                pynput_format = to_pynput_shortcut(hotkey)
+                pid = phrase["id"]
+                hotkeys_dict[pynput_format] = self._make_phrase_callback(pid)
+
+        if not hotkeys_dict:
+            return
 
         try:
-            self._listener = keyboard.GlobalHotKeys({
-                pynput_format: on_activate
-            })
+            self._listener = keyboard.GlobalHotKeys(hotkeys_dict)
             self._listener.daemon = True
             self._listener.start()
-            logger.info(f"Registered fallback global shortcut: '{qt_shortcut}' (pynput: '{pynput_format}')")
+            logger.info(f"Registered global shortcuts (pynput): toggle='{self._current_shortcut}', phrases={len(self._current_phrases)}")
         except Exception as e:
-            logger.error(f"Failed to register fallback global shortcut '{qt_shortcut}': {e}")
+            logger.error(f"Failed to register global shortcuts with pynput: {e}")
+
+    def _make_phrase_callback(self, pid: str):
+        return lambda: self.phrase_activated.emit(pid)
 
     def unregister(self) -> None:
         """Unregister and stop the active keyboard listener hook/D-Bus session."""
@@ -514,4 +528,5 @@ class GlobalHotkeyManager(QObject):
             self._dbus_runner = None
 
         self._current_shortcut = ""
+        self._current_phrases = []
 
