@@ -20,10 +20,9 @@ if TYPE_CHECKING:
 class HistoryManager:
     """Manages a capped history of TTS audio outputs.
 
-    Audio files are stored as ``tts_output_0.wav`` through
-    ``tts_output_{MAX_HISTORY-1}.wav`` where index 0 is the newest.
-    Adding a new entry rotates all existing files up by one index and
-    drops the oldest if the cap is exceeded.
+    Audio files are stored as ``tts_output_{uuid}.wav``.
+    Adding a new entry writes the file and records it in ``history.json``
+    with a unique ID and text. Oldest entries are deleted on overflow.
     """
 
     MAX_HISTORY: int = 20
@@ -52,53 +51,59 @@ class HistoryManager:
     def add_entry(self, text: str, temp_wav_path: str) -> None:
         """Add a new TTS output to the history.
 
-        Rotates existing files upward (0 → 1, 1 → 2, …) then copies
-        *temp_wav_path* into slot 0. The oldest file beyond
-        ``MAX_HISTORY`` is discarded.
+        Saves the WAV file using a unique ID, prepends it to the history metadata,
+        and deletes any oldest files exceeding MAX_HISTORY.
 
         Args:
             text: The text that was synthesised.
             temp_wav_path: Path to the temporary WAV file to archive.
         """
+        import uuid
         with self._lock:
             history = self._load_history()
 
-            # Rotate files from highest to lowest to avoid overwrites
-            for i in range(self.MAX_HISTORY - 1, 0, -1):
-                src = self._wav_path(i - 1)
-                dst = self._wav_path(i)
-                if os.path.exists(src):
-                    os.rename(src, dst)
+            # Generate unique ID and target path
+            entry_id = str(uuid.uuid4())
+            dst_path = self._wav_path(entry_id)
 
-            # Discard overflow (file at MAX_HISTORY would be orphaned)
-            overflow = self._wav_path(self.MAX_HISTORY)
-            if os.path.exists(overflow):
-                os.remove(overflow)
+            # Copy temp file to target
+            shutil.copy2(temp_wav_path, str(dst_path))
 
-            # Copy the new file into slot 0
-            shutil.copy2(temp_wav_path, str(self._wav_path(0)))
+            # Prepend new entry
+            history.insert(0, {"id": entry_id, "text": text})
 
-            # Update text history
-            history.insert(0, text)
-            history = history[: self.MAX_HISTORY]
+            # Check for overflow and delete files
+            if len(history) > self.MAX_HISTORY:
+                to_delete = history[self.MAX_HISTORY:]
+                history = history[: self.MAX_HISTORY]
+                for item in to_delete:
+                    old_path = self._wav_path(item["id"])
+                    if os.path.exists(old_path):
+                        try:
+                            os.remove(old_path)
+                        except Exception:
+                            pass
+
             self._save_history(history)
 
-    def get_history(self) -> list[str]:
+    def get_history(self) -> list[dict[str, Any]]:
         """Return the list of history text entries.
 
         Returns:
-            List of strings, newest first.
+            List of dicts containing 'id' and 'text', newest first.
         """
         with self._lock:
             return list(self._load_history())
 
-    def play_history(self, entry_id: int) -> None:
-        """Play a historical TTS output by its index.
+    def play_history(self, entry_id: str) -> None:
+        """Play a historical TTS output by its unique ID.
 
         Args:
-            entry_id: Zero-based index into the history.
+            entry_id: Unique string ID of the history entry.
         """
         with self._lock:
+            if self._audio_service.is_playing():
+                return
             wav = self._wav_path(entry_id)
             if not os.path.exists(wav):
                 return
@@ -106,11 +111,11 @@ class HistoryManager:
             config = self._settings_manager.get_app_config()
             self._audio_service.play_with_config(str(wav), config)
 
-    def delete_history(self, entry_id: int) -> None:
-        """Delete a single history entry and shift subsequent files down.
+    def delete_history(self, entry_id: str) -> None:
+        """Delete a single history entry by its unique ID.
 
         Args:
-            entry_id: Zero-based index of the entry to remove.
+            entry_id: Unique string ID of the entry to remove.
         """
         with self._lock:
             history = self._load_history()
@@ -118,29 +123,26 @@ class HistoryManager:
             # Remove the WAV file
             target = self._wav_path(entry_id)
             if os.path.exists(target):
-                os.remove(target)
+                try:
+                    os.remove(target)
+                except Exception:
+                    pass
 
-            # Shift subsequent files down to fill the gap
-            for i in range(entry_id, self.MAX_HISTORY - 1):
-                src = self._wav_path(i + 1)
-                dst = self._wav_path(i)
-                if os.path.exists(src):
-                    os.rename(src, dst)
-                else:
-                    break
-
-            # Update text history
-            if 0 <= entry_id < len(history):
-                history.pop(entry_id)
-            self._save_history(history)
+            # Filter history list
+            new_history = [item for item in history if item["id"] != entry_id]
+            self._save_history(new_history)
 
     def clear_history(self) -> None:
         """Delete all history audio files and reset the metadata."""
         with self._lock:
-            for i in range(self.MAX_HISTORY):
-                wav = self._wav_path(i)
+            history = self._load_history()
+            for item in history:
+                wav = self._wav_path(item["id"])
                 if os.path.exists(wav):
-                    os.remove(wav)
+                    try:
+                        os.remove(wav)
+                    except Exception:
+                        pass
 
             self._save_history([])
 
@@ -148,22 +150,22 @@ class HistoryManager:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _wav_path(self, index: int) -> Path:
-        """Return the path for the WAV file at *index*.
+    def _wav_path(self, entry_id: str) -> Path:
+        """Return the path for the WAV file with the given entry_id.
 
         Args:
-            index: File slot number.
+            entry_id: Unique ID of the entry.
 
         Returns:
-            Full path to ``tts_output_{index}.wav``.
+            Full path to ``tts_output_{entry_id}.wav``.
         """
-        return self._audio_dir / f"tts_output_{index}.wav"
+        return self._audio_dir / f"tts_output_{entry_id}.wav"
 
-    def _load_history(self) -> list[str]:
+    def _load_history(self) -> list[dict[str, Any]]:
         """Read history.json and return its contents.
 
         Returns:
-            List of text strings, or empty list on error / missing file.
+            List of dictionary entries, or empty list on error / missing file.
         """
         with self._lock:
             if not self._history_path.exists():
@@ -171,15 +173,21 @@ class HistoryManager:
             try:
                 with open(self._history_path, "r", encoding="utf-8") as fh:
                     data = json.load(fh)
-                    return data if isinstance(data, list) else []
+                    if not isinstance(data, list):
+                        return []
+                    cleaned = []
+                    for item in data:
+                        if isinstance(item, dict) and "id" in item and "text" in item:
+                            cleaned.append(item)
+                    return cleaned
             except (json.JSONDecodeError, ValueError):
                 return []
 
-    def _save_history(self, history: list[str]) -> None:
+    def _save_history(self, history: list[dict[str, Any]]) -> None:
         """Write *history* to history.json.
 
         Args:
-            history: List of text strings to persist.
+            history: List of dictionary entries to persist.
         """
         with self._lock:
             os.makedirs(self._audio_dir, exist_ok=True)

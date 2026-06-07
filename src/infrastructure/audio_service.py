@@ -10,11 +10,196 @@ import logging
 import sys
 import threading
 import queue
+import subprocess
 import numpy as np
 import sounddevice as sd
 from typing import Any
 
 logger = logging.getLogger("Moon-TTS.AudioService")
+
+
+class AudioPlayer:
+    """Base class/interface for audio players."""
+    def start_stream(self, device_id: Any, samplerate: int) -> None:
+        pass
+    def write(self, data: np.ndarray) -> None:
+        pass
+    def pause(self) -> None:
+        pass
+    def resume(self) -> None:
+        pass
+    def stop(self) -> None:
+        pass
+    def close(self) -> None:
+        pass
+    def wait_finished(self) -> None:
+        pass
+
+
+class LinuxSubprocessPlayer(AudioPlayer):
+    """Linux-specific player using paplay for robust Pipewire/PulseAudio routing."""
+    def __init__(self, samplerate: int = 24000):
+        self.samplerate = samplerate
+        self.proc: subprocess.Popen | None = None
+        self.paused = False
+
+    def start_stream(self, device_id: Any, samplerate: int) -> None:
+        self.close()
+        self.samplerate = samplerate
+        self.paused = False
+        cmd = ["paplay", "--raw", "--channels=1", f"--rate={samplerate}", "--format=float32le", "--latency-msec=150"]
+        if device_id and str(device_id).lower() != "default":
+            cmd.extend(["-d", str(device_id)])
+        try:
+            self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            logger.error(f"Failed to start paplay: {e}")
+            self.proc = None
+            raise
+
+    def write(self, data: np.ndarray) -> None:
+        if self.proc and self.proc.stdin:
+            self.proc.stdin.write(data.tobytes())
+            self.proc.stdin.flush()
+
+    def pause(self) -> None:
+        if self.proc:
+            import signal
+            try:
+                self.proc.send_signal(signal.SIGSTOP)
+            except Exception:
+                pass
+            self.paused = True
+
+    def resume(self) -> None:
+        if self.proc:
+            import signal
+            try:
+                self.proc.send_signal(signal.SIGCONT)
+            except Exception:
+                pass
+            self.paused = False
+
+    def stop(self) -> None:
+        self.close()
+
+    def close(self) -> None:
+        p = self.proc
+        if p:
+            try:
+                p.stdin.close()
+            except Exception:
+                pass
+            # Async wait so we don't block the calling thread
+            def _wait_proc(proc_obj):
+                try:
+                    proc_obj.wait(timeout=5.0)
+                except Exception:
+                    try:
+                        proc_obj.kill()
+                    except Exception:
+                        pass
+            threading.Thread(target=_wait_proc, args=(p,), daemon=True).start()
+            self.proc = None
+
+    def wait_finished(self) -> None:
+        p = self.proc
+        if p:
+            try:
+                p.stdin.close()
+            except Exception:
+                pass
+            while p.poll() is None:
+                import time
+                time.sleep(0.05)
+
+
+class PortAudioPlayer(AudioPlayer):
+    """PortAudio-based player using sounddevice in non-blocking callback mode."""
+    def __init__(self, samplerate: int = 24000):
+        self.samplerate = samplerate
+        self.stream: sd.OutputStream | None = None
+        self.buffer = bytearray()
+        self.lock = threading.Lock()
+        self.paused = False
+
+    def callback(self, outdata: np.ndarray, frames: int, time_info: Any, status: Any) -> None:
+        with self.lock:
+            if self.paused or len(self.buffer) == 0:
+                outdata.fill(0)
+                return
+
+            bytes_needed = frames * 4  # float32 is 4 bytes
+            chunk = self.buffer[:bytes_needed]
+            del self.buffer[:bytes_needed]
+
+            if len(chunk) < bytes_needed:
+                outdata[:len(chunk)//4] = np.frombuffer(chunk, dtype=np.float32).reshape(-1, 1)
+                outdata[len(chunk)//4:] = 0
+            else:
+                outdata[:] = np.frombuffer(chunk, dtype=np.float32).reshape(-1, 1)
+
+    def start_stream(self, device_id: Any, samplerate: int) -> None:
+        self.close()
+        self.samplerate = samplerate
+        resolved_dev = None
+        if device_id and str(device_id).lower() != "default":
+            try:
+                resolved_dev = int(device_id)
+            except ValueError:
+                pass
+        self.stream = sd.OutputStream(
+            samplerate=samplerate,
+            channels=1,
+            device=resolved_dev,
+            dtype='float32',
+            callback=self.callback
+        )
+        self.stream.start()
+
+    def write(self, data: np.ndarray) -> None:
+        # Keep buffer to at most ~4 seconds of audio to avoid unbounded memory growth
+        while True:
+            with self.lock:
+                if len(self.buffer) < 96000 * 4:
+                    break
+            import time
+            time.sleep(0.1)
+
+        with self.lock:
+            self.buffer.extend(data.tobytes())
+
+    def pause(self) -> None:
+        with self.lock:
+            self.paused = True
+
+    def resume(self) -> None:
+        with self.lock:
+            self.paused = False
+
+    def stop(self) -> None:
+        with self.lock:
+            self.buffer.clear()
+
+    def close(self) -> None:
+        if self.stream:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception:
+                pass
+            self.stream = None
+
+    def wait_finished(self) -> None:
+        while True:
+            with self.lock:
+                if not self.stream or len(self.buffer) == 0:
+                    break
+            import time
+            time.sleep(0.05)
+        if self.stream:
+            import time
+            time.sleep(0.15)
 
 
 class AudioService:
@@ -30,8 +215,7 @@ class AudioService:
         self._play_queue = queue.Queue()
         self._stop_event = threading.Event()
         self._samplerate = 24000
-        self._current_proc = None
-        self._current_stream = None
+        self._current_player: AudioPlayer | None = None
         self._paused = False
         self._pause_event = threading.Event()
         self._pause_event.set()
@@ -70,7 +254,7 @@ class AudioService:
             devices: list[dict[str, Any]] = [
                 {"id": "default", "name": "System Default"},
             ]
-            
+
             if sys.platform == "linux":
                 # Priority 1: Parse pactl list sinks
                 try:
@@ -173,7 +357,7 @@ class AudioService:
         if samplerate != self._samplerate:
             duration = len(chunk) / samplerate
             num_samples = int(duration * self._samplerate)
-            
+
             X = np.fft.fft(chunk)
             new_X = np.zeros(num_samples, dtype=X.dtype)
             keep = min(len(chunk), num_samples)
@@ -203,36 +387,22 @@ class AudioService:
         self._play_queue.put(None)
         self._notify_state_changed()
 
-    def flush(self):
+    def flush(self) -> None:
         """Wait for all currently enqueued chunks to finish playing."""
         self._play_queue.join()
 
-    def _playback_worker(self):
+    def _playback_worker(self) -> None:
         """Background thread that continuously writes chunks to the output stream."""
-        import subprocess
-        stream = None
-        proc = None
+        player = None
         current_device = None
 
-        def close_streams():
-            nonlocal stream, proc
-            if stream:
-                try:
-                    stream.stop()
-                    stream.close()
-                except Exception:
-                    pass
-                stream = None
-                self._current_stream = None
-            if proc:
-                try:
-                    proc.stdin.close()
-                    proc.wait(timeout=1.0)
-                except Exception:
-                    pass
-                proc = None
-                self._current_proc = None
-            self._notify_state_changed()
+        def close_player():
+            nonlocal player
+            if player:
+                player.close()
+                player = None
+                self._current_player = None
+                self._notify_state_changed()
 
         while not self._stop_event.is_set():
             if self._paused:
@@ -245,52 +415,42 @@ class AudioService:
                 continue
 
             if item is None:
-                close_streams()
+                if player:
+                    try:
+                        player.wait_finished()
+                    except Exception as e:
+                        logger.error(f"Error waiting for player to finish: {e}")
+                close_player()
                 self._play_queue.task_done()
                 continue
 
             chunk, device_id = item
 
-            if (stream is None and proc is None) or current_device != device_id:
-                close_streams()
+            if player is None or current_device != device_id:
+                close_player()
                 current_device = device_id
-                
+
                 # Check if we should use paplay (Linux)
                 use_paplay = False
                 if sys.platform == "linux":
                     import shutil
                     if shutil.which("paplay"):
                         use_paplay = True
-                        cmd = ["paplay", "--raw", "--channels=1", f"--rate={self._samplerate}", "--format=float32le", "--latency-msec=150"]
-                        if device_id and str(device_id).lower() != "default":
-                            cmd.extend(["-d", str(device_id)])
                         try:
-                            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
-                            self._current_proc = proc
+                            player = LinuxSubprocessPlayer(self._samplerate)
+                            player.start_stream(device_id, self._samplerate)
+                            self._current_player = player
                             self._notify_state_changed()
-                        except Exception as e:
-                            logger.error(f"Failed to start paplay stream: {e}")
-                            proc = None
-                            self._current_proc = None
+                        except Exception:
                             use_paplay = False
+                            player = None
 
-                # Fallback to sounddevice
+                # Fallback to sounddevice (non-blocking)
                 if not use_paplay:
-                    resolved_dev = None
-                    if device_id and str(device_id).lower() != "default":
-                        try:
-                            resolved_dev = int(device_id)
-                        except ValueError:
-                            pass
                     try:
-                        stream = sd.OutputStream(
-                            samplerate=self._samplerate,
-                            channels=1,
-                            device=resolved_dev,
-                            dtype='float32'
-                        )
-                        stream.start()
-                        self._current_stream = stream
+                        player = PortAudioPlayer(self._samplerate)
+                        player.start_stream(device_id, self._samplerate)
+                        self._current_player = player
                         self._notify_state_changed()
                     except Exception as e:
                         logger.error(f"Failed to open audio stream: {e}")
@@ -298,20 +458,16 @@ class AudioService:
                         continue
 
             try:
-                if proc and proc.stdin:
-                    proc.stdin.write(chunk.tobytes())
-                    proc.stdin.flush()
-                elif stream:
-                    stream.write(chunk)
+                player.write(chunk)
             except OSError as e:
                 if e.errno == 32:  # Broken pipe is normal on stop/abort
                     logger.debug(f"Audio stream pipe closed: {e}")
                 else:
                     logger.error(f"Error writing to audio stream: {e}")
-                close_streams()
+                close_player()
             except Exception as e:
                 logger.error(f"Error writing to audio stream: {e}")
-                close_streams()
+                close_player()
 
             self._play_queue.task_done()
 
@@ -319,35 +475,16 @@ class AudioService:
         """Stop playback immediately by clearing the queue and active streams."""
         self._paused = False
         self._pause_event.set()
-        
-        proc = self._current_proc
-        if proc:
-            import signal
+
+        player = self._current_player
+        if player:
             try:
-                proc.send_signal(signal.SIGCONT)
+                player.stop()
             except Exception:
                 pass
 
         with self._play_queue.mutex:
             self._play_queue.queue.clear()
-            
-        # Terminate active process immediately
-        if self._current_proc:
-            try:
-                self._current_proc.terminate()
-                self._current_proc.wait(timeout=0.5)
-            except Exception:
-                pass
-            self._current_proc = None
-
-        # Stop active sounddevice stream immediately
-        if self._current_stream:
-            try:
-                self._current_stream.stop()
-                self._current_stream.close()
-            except Exception:
-                pass
-            self._current_stream = None
 
         self._play_queue.put(None)
         self._notify_state_changed()
@@ -357,20 +494,12 @@ class AudioService:
         self._paused = True
         self._pause_event.clear()
 
-        proc = self._current_proc
-        if proc:
-            import signal
+        player = self._current_player
+        if player:
             try:
-                proc.send_signal(signal.SIGSTOP)
+                player.pause()
             except Exception as e:
-                logger.error(f"Error sending SIGSTOP: {e}")
-
-        stream = self._current_stream
-        if stream:
-            try:
-                stream.stop()
-            except Exception as e:
-                logger.error(f"Error stopping stream: {e}")
+                logger.error(f"Error pausing player: {e}")
         self._notify_state_changed()
 
     def resume(self) -> None:
@@ -378,20 +507,12 @@ class AudioService:
         self._paused = False
         self._pause_event.set()
 
-        proc = self._current_proc
-        if proc:
-            import signal
+        player = self._current_player
+        if player:
             try:
-                proc.send_signal(signal.SIGCONT)
+                player.resume()
             except Exception as e:
-                logger.error(f"Error sending SIGCONT: {e}")
-
-        stream = self._current_stream
-        if stream:
-            try:
-                stream.start()
-            except Exception as e:
-                logger.error(f"Error starting stream: {e}")
+                logger.error(f"Error resuming player: {e}")
         self._notify_state_changed()
 
     def is_paused(self) -> bool:
@@ -400,24 +521,30 @@ class AudioService:
 
     def is_playing(self) -> bool:
         """Return True if there is audio currently playing or enqueued."""
-        return not self._play_queue.empty() or self._current_proc is not None or self._current_stream is not None
+        player = self._current_player
+        if player:
+            if isinstance(player, LinuxSubprocessPlayer) and player.proc and player.proc.poll() is not None:
+                self._current_player = None
+
+        return not self._play_queue.empty() or self._current_player is not None
 
     def play_with_config(self, file_path: str, config: dict[str, Any]) -> None:
         """Legacy helper to read a WAV file and enqueue it."""
+        self.resume()
         if not config.get("playback", True):
             return
-            
+
         import soundfile as sf
         try:
             data, samplerate = sf.read(file_path, dtype="float32")
             if len(data.shape) > 1:
                 # convert stereo to mono
                 data = data.mean(axis=1)
-                
+
             self.enqueue_chunk(
-                data, 
-                samplerate, 
-                config.get("playbackDevice", "default"), 
+                data,
+                samplerate,
+                config.get("playbackDevice", "default"),
                 config.get("volume", 0.8)
             )
             self.enqueue_sentinel()
@@ -435,24 +562,23 @@ class AudioService:
         monitoring_volume: float = 1.0,
     ) -> None:
         """Legacy play method wrapper."""
+        self.resume()
         if not playback and not monitoring:
             return
-            
+
         import soundfile as sf
         try:
             data, samplerate = sf.read(file_path, dtype="float32")
             if len(data.shape) > 1:
                 data = data.mean(axis=1)
-                
+
             if playback:
                 self.enqueue_chunk(data, samplerate, device_id, volume)
-                
+
             if monitoring and monitoring_device_id is not None:
                 # We enqueue monitoring separately. Note: queue processes sequentially.
-                # True simultaneous playback to two devices requires two output streams.
-                # For now, we queue it sequentially to keep it simple.
                 self.enqueue_chunk(data, samplerate, monitoring_device_id, monitoring_volume)
-                
+
             if playback or (monitoring and monitoring_device_id is not None):
                 self.enqueue_sentinel()
         except Exception as e:

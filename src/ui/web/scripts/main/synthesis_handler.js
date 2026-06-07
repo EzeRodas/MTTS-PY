@@ -6,6 +6,11 @@ if (submitBtn) {
 }
 const textArea = document.getElementById('textArea');
 
+// Text history for input cycling (Up/Down arrows)
+const textHistory = [];
+let historyIndex = -1;
+let currentDraft = "";
+
 async function submitAction() {
     if (isProcessing || !api) return;
     const text = textArea.value.trim();
@@ -26,6 +31,16 @@ async function submitAction() {
         isProcessing = true;
         submitBtn.disabled = true;
         submitBtn.dataset.state = 'send';
+        
+        if (textHistory.length === 0 || textHistory[textHistory.length - 1] !== text) {
+            textHistory.push(text);
+            if (textHistory.length > 20) {
+                textHistory.shift();
+            }
+        }
+        historyIndex = -1;
+        currentDraft = "";
+
         textArea.value = '';
 
         api.getAppConfig(function(configJson) {
@@ -75,6 +90,32 @@ textArea.addEventListener('keydown', (e) => {
         if (submitBtn.dataset.state !== 'pause' && submitBtn.dataset.state !== 'play') {
             submitAction();
         }
+    } else if (e.key === 'ArrowUp') {
+        if (textHistory.length === 0) return;
+        e.preventDefault();
+        if (historyIndex === -1) {
+            currentDraft = textArea.value;
+            historyIndex = textHistory.length - 1;
+        } else if (historyIndex > 0) {
+            historyIndex--;
+        }
+        textArea.value = textHistory[historyIndex];
+        setTimeout(() => {
+            textArea.selectionStart = textArea.selectionEnd = textArea.value.length;
+        }, 0);
+    } else if (e.key === 'ArrowDown') {
+        if (historyIndex === -1) return;
+        e.preventDefault();
+        if (historyIndex < textHistory.length - 1) {
+            historyIndex++;
+            textArea.value = textHistory[historyIndex];
+        } else {
+            historyIndex = -1;
+            textArea.value = currentDraft;
+        }
+        setTimeout(() => {
+            textArea.selectionStart = textArea.selectionEnd = textArea.value.length;
+        }, 0);
     }
 });
 

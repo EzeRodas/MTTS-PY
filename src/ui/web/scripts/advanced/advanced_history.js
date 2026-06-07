@@ -29,14 +29,14 @@ function refreshHistoryList() {
             return;
         }
 
-        history.forEach((text, index) => {
+        history.forEach((entry) => {
             const item = document.createElement('div');
             item.className = 'list-item';
 
             const label = document.createElement('div');
             label.className = 'list-item-text';
-            label.textContent = text;
-            label.title = text;
+            label.textContent = entry.text;
+            label.title = entry.text;
 
             const actions = document.createElement('div');
             actions.className = 'list-item-actions';
@@ -44,14 +44,14 @@ function refreshHistoryList() {
             const playBtn = document.createElement('button');
             playBtn.className = 'btn-secondary';
             playBtn.textContent = 'Play';
-            playBtn.addEventListener('click', () => api.playHistory(index));
+            playBtn.addEventListener('click', () => api.playHistory(entry.id));
 
             const delBtn = document.createElement('button');
             delBtn.className = 'btn-secondary';
             delBtn.style.color = '#ef4444';
             delBtn.textContent = 'Delete';
             delBtn.addEventListener('click', () => {
-                api.deleteHistory(index);
+                api.deleteHistory(entry.id);
                 setTimeout(refreshHistoryList, 100);
             });
 

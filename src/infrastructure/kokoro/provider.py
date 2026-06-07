@@ -500,6 +500,7 @@ class KokoroTTSProvider:
         monitoring_device_id = app_config.get("monitoringDevice", "default")
         monitoring_volume = app_config.get("monitoringVolume", 0.8)
 
+        self.audio_service.resume()
         self.audio_service.enqueue_chunk(
             samples, 
             sample_rate, 

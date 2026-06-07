@@ -272,16 +272,16 @@ class AppController:
     # History
     # =========================================================================
 
-    def get_history(self) -> list[str]:
-        """Return synthesis history texts."""
+    def get_history(self) -> list[dict[str, Any]]:
+        """Return synthesis history entries."""
         return self._history_manager.get_history()
 
-    def play_history(self, history_id: int) -> None:
-        """Play a historical recording."""
+    def play_history(self, history_id: str) -> None:
+        """Play a historical recording by its unique ID."""
         self._history_manager.play_history(history_id)
 
-    def delete_history(self, history_id: int) -> None:
-        """Delete a history entry."""
+    def delete_history(self, history_id: str) -> None:
+        """Delete a history entry by its unique ID."""
         self._history_manager.delete_history(history_id)
 
     def clear_history(self) -> None:

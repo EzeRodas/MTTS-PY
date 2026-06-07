@@ -354,20 +354,20 @@ class Bridge(QObject):
 
     @Slot(result=str)
     def getHistory(self) -> str:
-        """Return JSON list of history text entries."""
+        """Return JSON list of history entries."""
         if self._controller:
             return json.dumps(self._controller.get_history())
         return "[]"
 
-    @Slot(int)
+    @Slot(str)
     @background_task
-    def playHistory(self, history_id: int):
+    def playHistory(self, history_id: str):
         """Play historical audio by ID."""
         if self._controller:
             self._controller.play_history(history_id)
 
-    @Slot(int)
-    def deleteHistory(self, history_id: int):
+    @Slot(str)
+    def deleteHistory(self, history_id: str):
         """Delete historical entry by ID."""
         if self._controller:
             self._controller.delete_history(history_id)
