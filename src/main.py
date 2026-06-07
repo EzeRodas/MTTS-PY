@@ -31,6 +31,16 @@ if sys.platform == "linux":
     if "QT_QPA_PLATFORM" not in os.environ:
         os.environ["QT_QPA_PLATFORM"] = "xcb"
 
+# Configure Chromium/QtWebEngine flags to minimize memory usage
+if "QTWEBENGINE_CHROMIUM_FLAGS" not in os.environ:
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+        "--js-flags=--max-semi-space-size=1 --max-old-space-size=32 "
+        "--renderer-process-limit=1 "
+        "--disable-gpu-program-cache "
+        "--disable-gpu-shader-disk-cache "
+        "--disable-speech-api"
+    )
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QSharedMemory, QByteArray, Qt, QObject, Slot
 from PySide6.QtNetwork import QLocalServer, QLocalSocket

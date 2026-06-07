@@ -193,8 +193,30 @@ class KokoroTTSProvider:
                 "in configured or default directories."
             )
 
+        import onnxruntime as rt
         from kokoro_onnx import Kokoro
-        instance = Kokoro(str(model_path), str(voices_path))
+
+        # Temporarily patch InferenceSession.__init__ to inject optimized session options
+        original_init = rt.InferenceSession.__init__
+
+        def _patched_init(sess_self, *args, **kwargs):
+            if "sess_options" not in kwargs or kwargs["sess_options"] is None:
+                opts = rt.SessionOptions()
+                # Disable memory arena (releases memory back to OS immediately)
+                opts.enable_cpu_mem_arena = False
+                # Run ops sequentially to avoid parallel memory overhead
+                opts.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL
+                # Limit thread count to reduce stack overhead
+                opts.intra_op_num_threads = 2
+                kwargs["sess_options"] = opts
+            original_init(sess_self, *args, **kwargs)
+
+        rt.InferenceSession.__init__ = _patched_init
+        try:
+            instance = Kokoro(str(model_path), str(voices_path))
+        finally:
+            rt.InferenceSession.__init__ = original_init
+
         self._patch_dtype_bug(instance)
         self.tts_instance = instance
         return self.tts_instance
@@ -202,6 +224,8 @@ class KokoroTTSProvider:
     def reload_model(self) -> None:
         """Clear cached instance and reload/preload the model."""
         self.tts_instance = None
+        import gc
+        gc.collect()
         self.preload_model()
 
     @staticmethod
