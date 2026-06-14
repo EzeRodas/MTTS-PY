@@ -144,7 +144,18 @@ class AppController:
             if hasattr(self._tts_service, "reload_model"):
                 self._tts_service.reload_model()
             return True
-        return False
+    def unload_engine(self) -> None:
+        """Unload the active TTS engine model and free resources/file locks."""
+        if hasattr(self._tts_service, "unload_model"):
+            try:
+                self._tts_service.unload_model()
+            except Exception as e:
+                logger.error(f"Failed to unload tts_service model: {e}")
+        elif hasattr(self._tts_service, "tts_instance"):
+            self._tts_service.tts_instance = None
+            import gc
+            gc.collect()
+        self._active_model = ""
 
     def reload_engine(self) -> None:
         """Re-check engine availability and preload if a model is now present."""

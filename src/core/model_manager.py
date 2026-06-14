@@ -215,8 +215,7 @@ class ModelManager:
             
         app_dir = Path(self.settings_manager.get_app_directory())
         res = installer.delete_model(precision, app_dir)
-        if res:
-            self._installed_precisions_cache.pop(engine_id, None)
+        self._installed_precisions_cache.pop(engine_id, None)
         return res
             
     def is_model_installed(self, engine_id: str, precision: str = "") -> bool:

@@ -509,6 +509,8 @@ class Bridge(QObject):
     @Slot(result=bool)
     def deleteModel(self) -> bool:
         if self._model_manager:
+            if self._controller:
+                self._controller.unload_engine()
             res = self._model_manager.delete_model("kokoro", "")
             if self._controller:
                 _executor.submit(self._controller.reload_engine)
@@ -518,6 +520,8 @@ class Bridge(QObject):
     @Slot(str, result=bool)
     def deleteModelWithPrecision(self, precision: str) -> bool:
         if self._model_manager:
+            if self._controller:
+                self._controller.unload_engine()
             res = self._model_manager.delete_model("kokoro", precision)
             if self._controller:
                 _executor.submit(self._controller.reload_engine)

@@ -228,6 +228,13 @@ class KokoroTTSProvider:
         gc.collect()
         self.preload_model()
 
+    def unload_model(self) -> None:
+        """Unload the model instance and run garbage collection to release locks."""
+        self.tts_instance = None
+        import gc
+        gc.collect()
+        logger.info("Kokoro model unloaded and garbage collected.")
+
     @staticmethod
     def _patch_dtype_bug(instance: Any) -> None:
         """Fix kokoro_onnx bug: speed is passed as int32 but models expect float32.
